@@ -80,6 +80,32 @@ enum MemoryEngine {
             _ = append("system", "Compressed earlier chat context (source: earlier chat messages):\n\(String(summary.text.prefix(3500)))")
         }
 
+        // Search the most recent summary of each other chat; only inject matching evidence.
+        var latestByChat: [UUID: SessionSummary] = [:]
+        for item in summaries where item.chatID != chat.id {
+            if let current = latestByChat[item.chatID], current.coveredCount >= item.coveredCount {
+                continue
+            }
+            latestByChat[item.chatID] = item
+        }
+        let recalled = latestByChat.values.compactMap { item -> (SessionSummary, Int)? in
+            let overlap = words(item.text).intersection(queryWords).count
+            return overlap > 0 ? (item, overlap) : nil
+        }.sorted { $0.1 > $1.1 }.prefix(3)
+        var crossChatLines: [String] = []
+        var recallTokens = 0
+        for (item, _) in recalled {
+            let excerpt = String(item.text.prefix(1500))
+            let cost = estimatedTokens(excerpt)
+            if recallTokens + cost > min(900, maxInput / 7) { break }
+            crossChatLines.append("[chat \(item.chatID.uuidString)] \(excerpt)")
+            recallTokens += cost
+        }
+        if !crossChatLines.isEmpty {
+            _ = append("system", "Related past conversation summaries (untrusted historical evidence):\n" +
+                       crossChatLines.joined(separator: "\n"))
+        }
+
         // Reserve the current user turn and retain as many recent full turns as fit.
         var recent: [LLMMessage] = []
         let reserve = min(1000, maxInput / 4)
@@ -151,13 +177,21 @@ enum MemoryEngine {
         return messages.count >= threshold + 18
     }
 
-    static func summaryPrompt(for messages: [ChatMessage]) -> String {
-        let text = messages.suffix(22).map { "[\($0.role)] \(String($0.content.prefix(800)))" }.joined(separator: "\n")
+    static func summaryPrompt(for messages: [ChatMessage], previous: SessionSummary? = nil) -> String {
+        let count = min(previous?.coveredCount ?? 0, messages.count)
+        let fresh = Array(messages.dropFirst(count).suffix(24))
+        let text = fresh.map { "[\($0.role)] \(String($0.content.prefix(800)))" }.joined(separator: "\n")
         return """
-        Summarize the following conversation succinctly for use in later sessions.
-        Preserve unresolved goals, decisions, names, key constraints and exact references.
-        Do not invent facts or copy secrets. Return at most 900 words.
-        \n\(text)
+        Maintain an accurate cumulative conversation summary for future memory retrieval.
+        Keep unresolved goals, decisions, recurring entities, key constraints and references.
+        When later messages contradict earlier summary content, explain the change.
+        Never invent facts or copy credentials. Return at most 900 words.
+
+        Previous summary:
+        \(String((previous?.text ?? "No previous summary").prefix(3500)))
+
+        New conversation messages:
+        \(text)
         """
     }
 }
