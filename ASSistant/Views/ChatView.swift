@@ -344,7 +344,8 @@ struct ChatView: View {
         let messages = store.messages(in: thread.id)
         let old = store.summaries.filter { $0.chatID == thread.id }
         guard MemoryEngine.shouldSummarize(messages, existing: old) else { return }
-        let input = MemoryEngine.summaryPrompt(for: messages)
+        let previous = old.max(by: { $0.coveredCount < $1.coveredCount })
+        let input = MemoryEngine.summaryPrompt(for: messages, previous: previous)
         if let text = try? await LLMService.request(profile: profile, messages: [
             LLMMessage(role: "system", content: "Summarize accurately. Never infer secrets or sensitive traits."),
             LLMMessage(role: "user", content: input)
