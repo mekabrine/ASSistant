@@ -235,7 +235,6 @@ private struct HTMLPreview: UIViewRepresentable {
         config.websiteDataStore = .nonPersistent()
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         let view = WKWebView(frame: .zero, configuration: config)
-        view.isInspectable = false
         return view
     }
     func updateUIView(_ uiView: WKWebView, context: Context) {
