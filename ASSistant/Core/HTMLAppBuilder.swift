@@ -81,7 +81,9 @@ enum HTMLAppBuilder {
         """
         let messages = [LLMMessage(role: "system", content: "You are the HTMLApp app builder. Produce complete functional single-file HTML."),
                         LLMMessage(role: "user", content: prompt)]
-        let output = try await LLMService.request(profile: profile, messages: messages, onDelta: onDelta)
+        var buildProfile = profile
+        buildProfile.maxOutputTokens = max(6144, profile.maxOutputTokens)
+        let output = try await LLMService.request(profile: buildProfile, messages: messages, onDelta: onDelta)
         let html = try normalizedHTML(output)
         var app = existing ?? GeneratedApp(title: title(from: html) ?? "Custom App", prompt: request, html: html)
         app.prompt = request
