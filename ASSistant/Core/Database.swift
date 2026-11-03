@@ -57,23 +57,24 @@ final class Database {
                 self.container.persistentStoreDescriptions = [fallback]
                 self.container.loadPersistentStores { [weak self] _, localError in
                     guard let self else { return }
-                    self.ready = localError == nil
-                    self.syncMessage = localError.map { "Local database failed: \($0.localizedDescription)" }
+                    let status = localError.map { "Local database failed: \($0.localizedDescription)" }
                         ?? "iCloud unavailable (\(error.localizedDescription)); using local data"
-                    if self.ready { self.configureContext() }
-                    DispatchQueue.main.async {
-                        NotificationCenter.default.post(name: .assistantStoreReady, object: nil)
-                    }
+                    self.completeLoad(isReady: localError == nil, message: status)
                 }
                 return
             }
-            self.ready = error == nil
-            self.syncMessage = error.map { "Local database failed: \($0.localizedDescription)" }
+            let status = error.map { "Local database failed: \($0.localizedDescription)" }
                 ?? (self.cloudRequested ? "iCloud sync configured (requires valid Apple signing/account)" : "Local-only mode")
-            if self.ready { self.configureContext() }
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(name: .assistantStoreReady, object: nil)
-            }
+            self.completeLoad(isReady: error == nil, message: status)
+        }
+    }
+
+    private func completeLoad(isReady: Bool, message: String) {
+        DispatchQueue.main.async {
+            self.ready = isReady
+            self.syncMessage = message
+            if isReady { self.configureContext() }
+            NotificationCenter.default.post(name: .assistantStoreReady, object: nil)
         }
     }
 
