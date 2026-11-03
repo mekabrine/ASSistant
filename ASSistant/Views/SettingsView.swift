@@ -13,7 +13,7 @@ struct SettingsView: View {
     @State private var permissionResult = ""
     @AppStorage("publisherEndpoint") private var publisherEndpoint = ""
     @AppStorage("cloudSyncEnabled") private var cloudSyncEnabled = true
-    @AppStorage("autoSummaryEnabled") private var autoSummaryEnabled = false
+    @AppStorage("autoSummaryEnabled") private var autoSummaryEnabled = true
 
     var body: some View {
         NavigationStack {
