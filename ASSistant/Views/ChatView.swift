@@ -24,7 +24,7 @@ struct ChatView: View {
     @State private var pendingTool: ProposedTool?
     @State private var toolAlert = false
     @State private var task: Task<Void, Never>?
-    @AppStorage("autoSummaryEnabled") private var autoSummaryEnabled = false
+    @AppStorage("autoSummaryEnabled") private var autoSummaryEnabled = true
     @StateObject private var speech = SpeechRecorder()
     @State private var selectedPhoto: PhotosPickerItem?
 
