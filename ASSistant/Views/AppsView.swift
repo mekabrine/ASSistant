@@ -153,6 +153,7 @@ struct AppBuilderScreen: View {
             }
             .navigationTitle("Build HTMLApp")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .onChange(of: html) { _ in sourceURL = nil }
             .sheet(isPresented: $showPreview) {
                 NavigationStack {
                     HTMLPreview(html: html)
@@ -185,7 +186,7 @@ struct AppBuilderScreen: View {
         Task {
             do {
                 let generated = try await HTMLAppBuilder.generate(
-                    request: prompt, profile: profile, existing: existing
+                    request: prompt, profile: profile, existing: html.isEmpty ? existing : currentApp()
                 ) { part in progress += part }
                 html = generated.html
                 title = generated.title
