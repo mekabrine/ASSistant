@@ -1,0 +1,75 @@
+name: Build ASSistant Unsigned IPA
+# Intentionally NO push, pull_request, schedule, or release triggers.
+on:
+  workflow_dispatch:
+    inputs:
+      macos_runner:
+        description: "macOS runner"
+        required: true
+        type: choice
+        default: macos-15
+        options:
+          - macos-15
+          - macos-26
+jobs:
+  build:
+    runs-on: ${{ inputs.macos_runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+      - name: Install XcodeGen
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew list xcodegen >/dev/null 2>&1 || HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen
+      - name: Generate Xcode project
+        run: |
+          set -euo pipefail
+          xcodegen generate --spec project.yml
+          test -d ASSistant.xcodeproj
+      - name: Swift syntax parsing
+        run: |
+          set -euo pipefail
+          find ASSistant ASSistantTests -type f -name '*.swift' -print0 | xargs -0 xcrun swiftc -frontend -parse
+      - name: Build unsigned iOS device app
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project ASSistant.xcodeproj -scheme ASSistant -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$PWD/DerivedData" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tee build.log
+      - name: Package and verify unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$PWD/DerivedData/Build/Products/Release-iphoneos/ASSistant.app"
+          test -f "$APP/Info.plist"
+          test -f "$APP/ASSistant"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")" = "16.0"
+          mkdir -p output/Payload
+          cp -R "$APP" output/Payload/
+          (cd output && /usr/bin/zip -qry ../ASSistant-unsigned.ipa Payload)
+          unzip -t ASSistant-unsigned.ipa | tail -n 1
+          test -s ASSistant-unsigned.ipa
+          echo "Unsigned IPA is NOT installable on stock iOS until correctly signed/provisioned."
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ASSistant-unsigned-ipa
+          path: ASSistant-unsigned.ipa
+          retention-days: 7
+      - name: Upload build log on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ASSistant-build-log
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 7
