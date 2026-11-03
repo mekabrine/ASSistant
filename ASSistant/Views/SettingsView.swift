@@ -138,6 +138,7 @@ private struct ProviderEditor: View {
     @State private var apiKey = ""
     @State private var connectionMessage = ""
     @State private var testing = false
+    @State private var discoveredModels: [String] = []
 
     var body: some View {
         NavigationStack {
@@ -156,6 +157,13 @@ private struct ProviderEditor: View {
                     TextField("Model ID", text: $profile.model)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled(true)
+                    Button("Discover available models") { discover() }
+                        .disabled(testing)
+                    if !discoveredModels.isEmpty {
+                        Picker("Choose discovered model", selection: $profile.model) {
+                            ForEach(discoveredModels, id: \.self) { id in Text(id).tag(id) }
+                        }
+                    }
                     Picker("Authentication", selection: $profile.authMode) {
                         Text("Bearer").tag("bearer")
                         Text("Custom header").tag("header")
@@ -203,6 +211,19 @@ private struct ProviderEditor: View {
         profile.name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
         store.save(profile)
         if !apiKey.isEmpty { try? KeychainStore.put(apiKey, for: "provider.\(profile.id.uuidString)") }
+    }
+
+    private func discover() {
+        save()
+        testing = true
+        Task {
+            do {
+                discoveredModels = try await LLMService.discoverModels(profile: profile)
+                connectionMessage = "Found \(discoveredModels.count) models."
+                if profile.model.isEmpty, let first = discoveredModels.first { profile.model = first }
+            } catch { connectionMessage = error.localizedDescription }
+            testing = false
+        }
     }
 
     private func test() {
