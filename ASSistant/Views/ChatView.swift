@@ -254,7 +254,25 @@ struct ChatView: View {
                 let cleaned = ToolRouter.cleanedResponse(raw).replacingOccurrences(of: "[[BUILD_HTMLAPP]]", with: "")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 _ = store.append(role: "assistant", text: cleaned, to: thread)
-                if let tool { pendingTool = tool; toolAlert = true }
+                if let tool {
+                    let category: String
+                    switch tool.name {
+                    case "create_reminder": category = "reminder"
+                    case "create_calendar_event": category = "calendar"
+                    case "schedule_notification": category = "notification"
+                    case "get_location": category = "location"
+                    case "count_contacts": category = "contacts"
+                    case "copy_text": category = "clipboard"
+                    case "speak_text": category = "speak"
+                    default: category = "task"
+                    }
+                    if category == "task" || store.agent(for: thread).allowedTools.contains(category) {
+                        pendingTool = tool
+                        toolAlert = true
+                    } else {
+                        _ = store.append(role: "assistant", text: "This agent is not allowed to use the \(category) tool.", to: thread)
+                    }
+                }
                 if wantApp { buildPrompt = BuildPrompt(text: text) }
                 if autoSummaryEnabled { await summarizeIfNeeded(thread: thread, profile: profile) }
             } catch is CancellationError {
