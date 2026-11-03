@@ -79,6 +79,11 @@ final class DeviceTools: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     func authorizeReminders() async throws {
+        if #available(iOS 17.0, *) {
+            let granted = try await eventStore.requestFullAccessToReminders()
+            guard granted else { throw DeviceToolError.denied }
+            return
+        }
         let granted = try await withCheckedThrowingContinuation { (c: CheckedContinuation<Bool, Error>) in
             eventStore.requestAccess(to: .reminder) { ok, error in
                 if let error { c.resume(throwing: error) } else { c.resume(returning: ok) }
@@ -99,6 +104,11 @@ final class DeviceTools: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     func authorizeCalendar() async throws {
+        if #available(iOS 17.0, *) {
+            let granted = try await eventStore.requestFullAccessToEvents()
+            guard granted else { throw DeviceToolError.denied }
+            return
+        }
         let granted = try await withCheckedThrowingContinuation { (c: CheckedContinuation<Bool, Error>) in
             eventStore.requestAccess(to: .event) { ok, error in
                 if let error { c.resume(throwing: error) } else { c.resume(returning: ok) }
