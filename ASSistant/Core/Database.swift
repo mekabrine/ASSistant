@@ -48,17 +48,38 @@ final class Database {
         container.persistentStoreDescriptions = [description]
         container.loadPersistentStores { [weak self] _, error in
             guard let self else { return }
-            if let error {
-                self.syncMessage = "Cloud/local store unavailable: \(error.localizedDescription)"
-                // Fail closed: do not replace a sync store with an empty database.
-            } else {
-                self.ready = true
-                self.syncMessage = self.cloudRequested ? "iCloud sync configured (status depends on signing/account)" : "Local-only mode"
-                self.container.viewContext.automaticallyMergesChangesFromParent = true
-                self.container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+            if let error, self.cloudRequested {
+                // Unsigned/sideloaded builds may lack functional CloudKit entitlements.
+                // Open the SAME SQLite file locally rather than replacing the user's data.
+                let fallback = NSPersistentStoreDescription(url: url)
+                fallback.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+                fallback.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+                self.container.persistentStoreDescriptions = [fallback]
+                self.container.loadPersistentStores { [weak self] _, localError in
+                    guard let self else { return }
+                    self.ready = localError == nil
+                    self.syncMessage = localError.map { "Local database failed: \($0.localizedDescription)" }
+                        ?? "iCloud unavailable (\(error.localizedDescription)); using local data"
+                    if self.ready { self.configureContext() }
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(name: .assistantStoreReady, object: nil)
+                    }
+                }
+                return
             }
-            DispatchQueue.main.async { NotificationCenter.default.post(name: .assistantStoreReady, object: nil) }
+            self.ready = error == nil
+            self.syncMessage = error.map { "Local database failed: \($0.localizedDescription)" }
+                ?? (self.cloudRequested ? "iCloud sync configured (requires valid Apple signing/account)" : "Local-only mode")
+            if self.ready { self.configureContext() }
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .assistantStoreReady, object: nil)
+            }
         }
+    }
+
+    private func configureContext() {
+        container.viewContext.automaticallyMergesChangesFromParent = true
+        container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
     }
 
     func all<T: Decodable>(_ kind: String, as type: T.Type) -> [T] {
