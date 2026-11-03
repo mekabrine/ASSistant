@@ -27,6 +27,10 @@ struct ChatView: View {
     @AppStorage("autoSummaryEnabled") private var autoSummaryEnabled = true
     @StateObject private var speech = SpeechRecorder()
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var suggestedAppPrompt: String?
+    @State private var showAppDecision = false
+    @State private var autoBuildStatus = ""
+    @State private var appBuildTask: Task<Void, Never>?
 
     private var current: ChatThread? { store.chats.first(where: { $0.id == chatID }) }
     private var currentMessages: [ChatMessage] {
@@ -81,6 +85,17 @@ struct ChatView: View {
                         .foregroundColor(.secondary)
                         .padding(.horizontal)
                         .padding(.vertical, 4)
+                    }
+                    if !autoBuildStatus.isEmpty {
+                        HStack {
+                            Text(autoBuildStatus).font(.caption)
+                            Spacer()
+                            if appBuildTask != nil {
+                                Button("Cancel") { appBuildTask?.cancel() }
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
                     }
                     composerArea
                 } else {
@@ -159,6 +174,17 @@ struct ChatView: View {
                 }
             } message: { proposal in
                 Text("Allow \(proposal.name)\n\(proposal.title ?? proposal.text ?? proposal.details ?? "")\n\(proposal.at ?? "")")
+            }
+            .confirmationDialog("Build an HTMLApp?", isPresented: $showAppDecision, titleVisibility: .visible) {
+                Button("Generate, publish and open HTMLApp") {
+                    if let prompt = suggestedAppPrompt { beginAutomaticHTMLApp(prompt) }
+                }
+                Button("Review HTML before publishing") {
+                    if let prompt = suggestedAppPrompt { buildPrompt = BuildPrompt(text: prompt) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("ASSistant will use the HTMLApp skill, generate working single-file HTML, publish it at a shareable HTTPS link, then open HTMLApp's import screen. Anyone with the link can read its HTML source.")
             }
             .onChange(of: selectedPhoto) { photo in
                 guard let photo else { return }
@@ -262,6 +288,53 @@ struct ChatView: View {
         }.value
     }
 
+    private func beginAutomaticHTMLApp(_ request: String) {
+        guard appBuildTask == nil else { return }
+        guard let thread = current, let provider = store.provider(for: thread) else {
+            errorText = "Configure an API provider before creating an app."
+            return
+        }
+        appBuildTask = Task {
+            var localApp: GeneratedApp?
+            defer {
+                appBuildTask = nil
+                autoBuildStatus = ""
+            }
+            do {
+                autoBuildStatus = "Generating HTML from the HTMLApp skill…"
+                let app = try await HTMLAppBuilder.generate(request: request, profile: provider)
+                try Task.checkCancellation()
+                localApp = app
+                store.save(app)
+                autoBuildStatus = "Uploading the HTML file…"
+                let endpoint = UserDefaults.standard.string(forKey: "publisherEndpoint") ?? ""
+                let raw: String
+                if endpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    raw = try await HTMLPublisher.uploadToGist(app)
+                } else {
+                    raw = try await HTMLPublisher.uploadToCustomEndpoint(
+                        app, endpoint: endpoint, bearer: KeychainStore.get("publisher.customToken")
+                    )
+                }
+                try Task.checkCancellation()
+                var published = app
+                published.sourceURL = raw
+                store.save(published)
+                autoBuildStatus = "Opening HTMLApp import…"
+                try await HTMLAppBuilder.openHTMLApp(raw)
+                _ = store.append(role: "assistant", text:
+                    "Created \(published.title), hosted its HTML and opened the HTMLApp import screen. Choose Save App in HTMLApp to install it.", to: thread)
+            } catch is CancellationError {
+                errorText = "HTMLApp creation was cancelled. Any previously published file remains accessible."
+            } catch {
+                errorText = "HTMLApp creation: \(error.localizedDescription)"
+                if let localApp {
+                    buildPrompt = BuildPrompt(text: localApp.prompt)
+                }
+            }
+        }
+    }
+
     private func ensureChat() {
         guard store.database.ready else { return }
         if let chatID, store.chats.contains(where: { $0.id == chatID }) { return }
@@ -328,7 +401,10 @@ struct ChatView: View {
                         _ = store.append(role: "assistant", text: "This agent is not allowed to use the \(category) tool.", to: thread)
                     }
                 }
-                if wantApp { buildPrompt = BuildPrompt(text: text) }
+                if wantApp {
+                    suggestedAppPrompt = text
+                    showAppDecision = true
+                }
                 if autoSummaryEnabled { await summarizeIfNeeded(thread: thread, profile: profile) }
             } catch is CancellationError {
                 if !streaming.isEmpty { _ = store.append(role: "assistant", text: streaming + "\n[Interrupted]", to: thread) }
