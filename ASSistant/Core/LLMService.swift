@@ -153,6 +153,11 @@ enum LLMService {
     ) async throws -> String {
         let url = try endpoint(profile: profile, ending: "messages")
         var request = try authorizedRequest(url, profile: profile)
+        if profile.authMode != "none" {
+            guard let apiKey = key(for: profile), !apiKey.isEmpty else { throw AIRequestError.missingKey }
+            request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+            request.setValue(nil, forHTTPHeaderField: "Authorization")
+        }
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         // Anthropic takes system instructions outside the messages array.
         let systemText = messages.filter { $0.role == "system" }.map(\.content).joined(separator: "\n")
