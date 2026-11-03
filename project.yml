@@ -49,6 +49,21 @@ targets:
               - assistant
         UIBackgroundModes: []
         ITSAppUsesNonExemptEncryption: false
+        NSContactsUsageDescription: "Read contacts only when you explicitly approve a contact action."
+        NSCameraUsageDescription: "Use the camera only when you choose to capture media."
+        NSMicrophoneUsageDescription: "Record your voice for transcription when you choose to speak."
+        NSSpeechRecognitionUsageDescription: "Transcribe your speech when you request dictation."
+        NSPhotoLibraryUsageDescription: "Read images only when you explicitly select or authorize them."
+        NSLocationWhenInUseUsageDescription: "Access your location only for approved actions."
+        NSCalendarsUsageDescription: "Create calendar events when you explicitly approve."
+        NSRemindersUsageDescription: "Create reminders when you explicitly approve."
+        NSCalendarsFullAccessUsageDescription: "Access calendars to create approved events."
+        NSRemindersFullAccessUsageDescription: "Access reminders to create approved reminders."
+        NSHealthShareUsageDescription: "Read requested health information only after explicit authorization."
+        NSBluetoothAlwaysUsageDescription: "Access nearby Bluetooth devices only for approved actions."
+        NFCReaderUsageDescription: "Scan NFC tags only when explicitly requested."
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
   ASSistantTests:
     type: bundle.unit-test
     platform: iOS
