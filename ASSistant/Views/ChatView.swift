@@ -1,5 +1,9 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import PhotosUI
+import Vision
+import PDFKit
+import UIKit
 
 private struct BuildPrompt: Identifiable {
     let id = UUID()
@@ -21,6 +25,8 @@ struct ChatView: View {
     @State private var toolAlert = false
     @State private var task: Task<Void, Never>?
     @AppStorage("autoSummaryEnabled") private var autoSummaryEnabled = false
+    @StateObject private var speech = SpeechRecorder()
+    @State private var selectedPhoto: PhotosPickerItem?
 
     private var current: ChatThread? { store.chats.first(where: { $0.id == chatID }) }
     private var currentMessages: [ChatMessage] {
@@ -120,11 +126,11 @@ struct ChatView: View {
                 case .success(let url):
                     let granted = url.startAccessingSecurityScopedResource()
                     defer { if granted { url.stopAccessingSecurityScopedResource() } }
-                    guard url.pathExtension.lowercased() != "pdf" else {
-                        errorText = "PDF extraction isn't in this prototype yet. Import a text file."
-                        return
-                    }
-                    if let content = try? String(contentsOf: url, encoding: .utf8) {
+                    if url.pathExtension.lowercased() == "pdf" {
+                        if let pdf = PDFDocument(url: url), let content = pdf.string, !content.isEmpty {
+                            composer += "\n\nPDF text from \(url.lastPathComponent):\n" + String(content.prefix(18000))
+                        } else { errorText = "This PDF has no extractable text." }
+                    } else if let content = try? String(contentsOf: url, encoding: .utf8) {
                         composer += "\n\nAttached file \(url.lastPathComponent):\n" + String(content.prefix(18000))
                     } else { errorText = "Unable to read text file." }
                 case .failure(let error): errorText = error.localizedDescription
@@ -154,6 +160,24 @@ struct ChatView: View {
             } message: { proposal in
                 Text("Allow \(proposal.name)\n\(proposal.title ?? proposal.text ?? proposal.details ?? "")\n\(proposal.at ?? "")")
             }
+            .onChange(of: selectedPhoto) { photo in
+                guard let photo else { return }
+                Task {
+                    do {
+                        guard let bytes = try await photo.loadTransferable(type: Data.self) else {
+                            errorText = "Could not load selected photo."
+                            return
+                        }
+                        let extracted = try await Self.extractPhotoText(bytes)
+                        if extracted.isEmpty { errorText = "No readable text found in the photo." }
+                        else { composer += "\n\nText recognized from photo:\n" + String(extracted.prefix(16000)) }
+                    } catch { errorText = error.localizedDescription }
+                }
+            }
+            .onChange(of: speech.transcript) { transcript in
+                if !transcript.isEmpty { composer = transcript }
+            }
+            .onDisappear { speech.stop() }
             .onAppear { ensureChat() }
             .onChange(of: store.database.ready) { _ in ensureChat() }
         }
@@ -163,8 +187,28 @@ struct ChatView: View {
         VStack(spacing: 8) {
             HStack(alignment: .bottom, spacing: 8) {
                 Button { importFile = true } label: { Image(systemName: "paperclip").font(.title3) }
-                    .accessibilityLabel("Attach text file")
+                    .accessibilityLabel("Attach text or PDF file")
                     .disabled(isLoading)
+                PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    Image(systemName: "photo").font(.title3)
+                }
+                .accessibilityLabel("Read text from photo")
+                .disabled(isLoading)
+                Button {
+                    if speech.recording { speech.stop() }
+                    else {
+                        Task {
+                            do { try await speech.start() }
+                            catch { errorText = error.localizedDescription }
+                        }
+                    }
+                } label: {
+                    Image(systemName: speech.recording ? "mic.fill" : "mic")
+                        .foregroundColor(speech.recording ? .red : .blue)
+                        .font(.title3)
+                }
+                .accessibilityLabel(speech.recording ? "Stop dictation" : "Start dictation")
+                .disabled(isLoading)
                 TextEditor(text: $composer)
                     .frame(minHeight: 42, maxHeight: 116)
                     .padding(4)
@@ -205,6 +249,17 @@ struct ChatView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(.thinMaterial)
+    }
+
+    private static func extractPhotoText(_ data: Data) async throws -> String {
+        try await Task.detached(priority: .userInitiated) {
+            guard let image = UIImage(data: data)?.cgImage else { throw DeviceToolError.unavailable }
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            try VNImageRequestHandler(cgImage: image).perform([request])
+            return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+                .joined(separator: "\n")
+        }.value
     }
 
     private func ensureChat() {
