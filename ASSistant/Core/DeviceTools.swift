@@ -125,7 +125,10 @@ final class DeviceTools: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
         }
         guard granted else { throw DeviceToolError.denied }
-        return try contactStore.unifiedContacts(matching: NSPredicate(value: true), keysToFetch: [CNContactIdentifierKey as CNKeyDescriptor]).count
+        let request = CNContactFetchRequest(keysToFetch: [CNContactIdentifierKey as CNKeyDescriptor])
+        var total = 0
+        try contactStore.enumerateContacts(with: request) { _, _ in total += 1 }
+        return total
     }
 
     func requestNotifications() async throws {
