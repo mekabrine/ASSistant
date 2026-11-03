@@ -214,4 +214,35 @@ enum LLMService {
         }
         return data
     }
+
+    static func discoverModels(profile: ProviderProfile) async throws -> [String] {
+        let root = try baseURL(profile.baseURL)
+        let url: URL
+        let lowerPath = root.path.lowercased()
+        if lowerPath.hasSuffix("/chat/completions") {
+            url = root.deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("models")
+        } else if lowerPath.hasSuffix("/messages") {
+            url = root.deletingLastPathComponent().appendingPathComponent("models")
+        } else {
+            url = root.appendingPathComponent("models")
+        }
+        var request = try authorizedRequest(url, profile: profile, method: "GET")
+        if profile.adapter == "anthropic" {
+            request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        }
+        if profile.adapter == "gemini", let key = key(for: profile) {
+            request.setValue(nil, forHTTPHeaderField: "Authorization")
+            request.setValue(key, forHTTPHeaderField: "x-goog-api-key")
+        }
+        let data = try await send(request)
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw AIRequestError.unsupportedResponse
+        }
+        let rows = (json["data"] as? [[String: Any]]) ?? (json["models"] as? [[String: Any]]) ?? []
+        return Array(Set(rows.compactMap { row in
+            (row["id"] as? String ?? row["name"] as? String)?
+                .replacingOccurrences(of: "models/", with: "")
+        })).sorted()
+    }
 }
