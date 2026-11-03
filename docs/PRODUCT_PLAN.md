@@ -36,10 +36,10 @@ Navigation: **Chat**, **Agents**, **Tasks**, **Apps**, **Settings**, with a glob
 - Tools have typed schemas, timeouts, cancellation, capability flags, audit logs, per-action approval policy, sensitivity classes and limited scopes.
 - The app can **request** supported system permissions when needed; it cannot grant itself permissions, bypass entitlements, or have arbitrary unrestricted access. Permissions are off by default and granted just-in-time; user can revoke.
 - Read-only tools can be allowed per scope; sending messages, publishing apps/code, modifying contacts/files, buying, deleting, or sharing data should require a clear confirmation.
-- HTMLApp integration: package generated single-file HTML or manifest+assets; validate static code, verify hash, sandbox preview, show manifest and permission screen, install via a verified cross-app URL/Universal Link integration, track origin/version/rollback.
+- HTMLApp integration (required direct flow): load the existing HTMLApp **skill file** and any referenced guidance for app generation; generate **one self-contained HTML file** with embedded CSS and JS; validate/preview it; upload the raw .html to a reachable HTTPS URL using an approved publishing service; transform the resulting URL into the **existing HTMLApp install URL scheme**; open that URL on the device; let HTMLApp handle its existing import/install confirmation. Keep hosted source URL and version locally for future edits. Do not require a JSON manifest, a new installation service in HTMLApp, or a custom app package format.
 - Follow the existing HTMLApp bridge contract from `HTMLAppV3/HTMLAppBridgeRegistry.swift`, including native permission gating and secure storage. Do not assume arbitrary cross-app remote execution.
 - Allow versioned *agent actions* for installed mini apps only through explicit user-authorized host APIs; don't expose Keychain/provider tokens to mini-app JavaScript.
-- HTMLApp owns native app runtime; ASSistant owns AI orchestration, prompts, outputs and user approvals. Cross-app import URL must be confirmed with HTMLApp source before implementation.
+- HTMLApp owns native app runtime and its existing URL-scheme install handler; ASSistant owns skill-driven generation, validations, publishing, and opening the install link. Verify the exact existing scheme and the location/version of the HTMLApp skill file in the HTMLApp repository before coding this integration.
 
 ### P3: autonomous capabilities
 - Agent profiles, custom instructions, specialized tools, tool/model routing, per-agent memory, shared project context.
@@ -179,13 +179,13 @@ Build failure is the correct outcome if Xcode project/schema is missing; create 
 
 **M3** Agents, tools, approvals. Acceptance: a permission is requested only when needed; tool calls cannot bypass denial; audit view shows provenance; no unauthorized destructive actions.
 
-**M4** HTMLApp app generator. Acceptance: generate + preview + review + securely import package into HTMLApp using verified integration; future updates retain user data.
+**M4** HTMLApp app generator. Acceptance: follow the HTMLApp skill to produce a single file, preview/validate, host at HTTPS URL, open HTMLApp's existing install URL scheme, confirm user can install in HTMLApp; future edits preserve user data.
 
 **M5** Scheduling, background service, extra adapters, advanced skills, optimization.
 
 ## Open verification items
 
-- Inspect HTMLApp's current import/deep link routes and implement a documented cross-app installation endpoint if missing.
+- Read the actual HTMLApp skill file and identify the existing URL scheme and its exact required URL encoding; use those unchanged. No new install endpoint planned.
 - Select bundle ID and CloudKit container ID for signed testing. Do not assume arbitrary sideload signing supports CloudKit.
 - Decide whether private provider URL/config metadata can sync and what encryption boundaries are acceptable.
 - Verify Swift/iOS SDK availability on selected GitHub-hosted macOS runner before pinning versions.
