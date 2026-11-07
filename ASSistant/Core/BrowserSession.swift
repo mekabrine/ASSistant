@@ -238,7 +238,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
           return true;
         }
         """#
-        let encodedID = String(data: try JSONSerialization.data(withJSONObject: id), encoding: .utf8)!
+        let encodedID = String(decoding: try JSONEncoder().encode(id), as: UTF8.self)
         let value = try await web.evaluateJavaScript("(" + js + ")(" + encodedID + ")")
         guard (value as? Bool) == true else { throw BrowserFailure.invalidLink }
         try? await Task.sleep(nanoseconds: 1_200_000_000)
