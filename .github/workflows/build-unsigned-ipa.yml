@@ -11,6 +11,11 @@ on:
         options:
           - macos-15
           - macos-26
+      run_simulator_smoke_test:
+        description: "Also build, unit test and launch in iOS Simulator (extra runner minutes)"
+        required: false
+        type: boolean
+        default: false
 jobs:
   build:
     runs-on: ${{ inputs.macos_runner }}
@@ -44,6 +49,40 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild -project ASSistant.xcodeproj -scheme ASSistant -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$PWD/DerivedData" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tee build.log
+      - name: Optional simulator launch and unit smoke tests
+        if: \${{ inputs.run_simulator_smoke_test }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Use any available iPhone simulator, possibly newer than iOS 16.
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c '
+          import json,sys
+          devices=json.load(sys.stdin)["devices"]
+          candidates=[d["udid"] for ds in devices.values() for d in ds
+                      if d.get("isAvailable") and d.get("name","").startswith("iPhone")]
+          print(candidates[0] if candidates else "")
+          ')"
+          if [ -z "$DEVICE_ID" ]; then
+            echo "::error::No available iPhone simulator runtime."
+            exit 1
+          fi
+          xcrun simctl boot "$DEVICE_ID" || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+          xcodebuild -project ASSistant.xcodeproj -scheme ASSistant \
+            -configuration Debug -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -derivedDataPath "$PWD/DerivedDataSimulator" \
+            CODE_SIGNING_ALLOWED=NO test | tee simulator-test.log
+          SIM_APP="$PWD/DerivedDataSimulator/Build/Products/Debug-iphonesimulator/ASSistant.app"
+          test -d "$SIM_APP"
+          xcrun simctl install "$DEVICE_ID" "$SIM_APP"
+          xcrun simctl launch "$DEVICE_ID" com.mekabrine.ASSistant
+          sleep 5
+          if ! xcrun simctl spawn "$DEVICE_ID" launchctl list | grep -F "com.mekabrine.ASSistant"; then
+            echo "::error::ASSistant did not remain alive after launch."
+            exit 1
+          fi
+          echo "Simulator launch smoke test passed."
       - name: Package and verify unsigned IPA
         shell: bash
         run: |
@@ -70,6 +109,8 @@ jobs:
         if: failure()
         with:
           name: ASSistant-build-log
-          path: build.log
+          path: |
+            build.log
+            simulator-test.log
           if-no-files-found: ignore
           retention-days: 7
