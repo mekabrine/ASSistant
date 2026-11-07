@@ -190,7 +190,7 @@ final class Database {
             let request = NSFetchRequest<NSManagedObject>(entityName: "Record")
             request.predicate = NSPredicate(format: "kind == %@ AND recordID == %@", kind, id.uuidString)
             for object in ((try? context.fetch(request)) ?? []) {
-                object.setValue(true, forKey: "deleted")
+                object.setValue(true, forKey: "tombstoneFlag")
                 object.setValue(Date(), forKey: "updatedAt")
             }
             do { try context.save() }
