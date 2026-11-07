@@ -294,8 +294,8 @@ struct ChatView: View {
                     Image(systemName: (whisper.isRecording || speech.recording) ? "mic.fill" : "mic")
                         .foregroundColor((whisper.isRecording || speech.recording) ? .red : .blue)
                         .font(.title3)
-                        .symbolEffect(.pulse, options: .repeating,
-                                      isActive: whisper.isRecording || speech.recording)
+                        .scaleEffect((whisper.isRecording || speech.recording) ? 1.12 : 1.0)
+                        .animation(.easeInOut(duration: 0.25), value: whisper.isRecording || speech.recording)
                 }
                 .accessibilityLabel(whisper.isRecording || speech.recording ? "Stop and transcribe" : "Start dictation")
                 .disabled(isLoading || whisper.isTranscribing)
@@ -581,8 +581,8 @@ private struct MessageBubble: View {
             .foregroundStyle(isUser ? Color.white : Color.primary)
             .contextMenu {
                 Button("Copy") { UIPasteboard.general.string = message.content }
-                if let onEdit { Button("Edit message", systemImage: "pencil", action: onEdit) }
-                if let onRegenerate { Button("Regenerate answer", systemImage: "arrow.clockwise", action: onRegenerate) }
+                if let onEdit { Button(action: onEdit) { Label("Edit message", systemImage: "pencil") } }
+                if let onRegenerate { Button(action: onRegenerate) { Label("Regenerate answer", systemImage: "arrow.clockwise") } }
             }
             if !isUser { Spacer(minLength: 18) }
         }
