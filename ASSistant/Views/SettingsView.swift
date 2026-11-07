@@ -6,6 +6,7 @@ import CloudKit
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
     @State private var createProvider = false
+    @State private var showAgents = false
     @State private var editingProvider: ProviderProfile?
     @State private var gistToken = ""
     @State private var publisherToken = ""
@@ -24,6 +25,15 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("Agent personalities and control") {
+                    Button {
+                        showAgents = true
+                    } label: {
+                        Label("Manage agents and tool permissions", systemImage: "person.2.fill")
+                    }
+                    Text("Choose custom agent instructions, model routing, and which native/web tools are enabled. Device writes always require approval.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Section("AI providers") {
                     Button { createProvider = true } label: { Label("Add provider", systemImage: "plus") }
                     if store.providers.isEmpty {
@@ -181,7 +191,12 @@ struct SettingsView: View {
                     if !testResult.isEmpty { Text(testResult).font(.footnote) }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(AmbientBackground())
             .navigationTitle("Settings")
+            .sheet(isPresented: $showAgents) {
+                AgentsView().environmentObject(store)
+            }
             .sheet(isPresented: $createProvider) {
                 ProviderEditor(profile: ProviderProfile(), isNew: true).environmentObject(store)
             }
