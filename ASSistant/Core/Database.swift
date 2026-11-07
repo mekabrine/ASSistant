@@ -122,9 +122,8 @@ final class Database {
         fallback.persistentStoreDescriptions = [Self.makeDescription(url: storeURL, cloud: false)]
         fallback.loadPersistentStores { [weak self] _, error in
             guard let self else { return }
-            let message = error == nil
-                ? "CloudKit unavailable (\(cloudError.localizedDescription)); operating locally."
-                : "Local storage could not open: \(error!.localizedDescription)"
+            let message = error.map { "Local storage could not open: \($0.localizedDescription)" }
+                ?? "CloudKit unavailable (\(cloudError.localizedDescription)); operating locally."
             self.completeLoad(container: fallback, error: error, message: message)
         }
     }
