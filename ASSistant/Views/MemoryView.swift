@@ -57,6 +57,8 @@ struct MemoryView: View {
                 }
             }
             .searchable(text: $query)
+            .scrollContentBackground(.hidden)
+            .background(AmbientBackground())
             .navigationTitle("Memory")
             .sheet(isPresented: $adding) {
                 MemoryEditor(memory: MemoryItem(text: ""), isNew: true).environmentObject(store)
