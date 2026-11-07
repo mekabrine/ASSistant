@@ -272,6 +272,10 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         if web.canGoBack { web.goBack() }
     }
 
+    func goForward() {
+        if web.canGoForward { web.goForward() }
+    }
+
     func reload() { web.reload() }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
@@ -332,6 +336,8 @@ struct BrowserSurface: UIViewRepresentable {
 struct BrowserDock: View {
     @ObservedObject var session: BrowserSession
     @State private var appear = false
+    @State private var addressInput = ""
+    @FocusState private var addressFocused: Bool
 
     var body: some View {
         if session.visible {
@@ -358,22 +364,42 @@ struct BrowserDock: View {
                 }
                 .padding(10)
                 if session.expanded {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 8) {
+                        Button { session.goBack() } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                        Button { session.goForward() } label: {
+                            Image(systemName: "chevron.right")
+                        }
+                        TextField("Search or public HTTPS URL", text: $addressInput)
+                            .font(.caption2)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                            .keyboardType(.URL)
+                            .focused($addressFocused)
+                            .onSubmit { openAddress() }
+                            .padding(7)
+                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 9))
+                        Button { session.reload() } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.bottom, 7)
+                    HStack {
                         Button {
                             session.userControl = false
                             session.expanded = false
-                        } label: { Label("Return to agent", systemImage: "person.crop.circle.badge.checkmark") }
-                            .font(.caption2)
+                        } label: {
+                            Label("Return control to agent", systemImage: "arrow.uturn.backward")
+                                .font(.caption2)
+                        }
                         Spacer()
-                    }.padding(.horizontal, 12).padding(.bottom, 5)
-                    HStack(spacing: 12) {
-                        Button { session.goBack() } label: { Image(systemName: "chevron.left") }
-                        Text(session.currentURL).font(.caption2).lineLimit(1)
-                            .textSelection(.enabled)
-                        Spacer()
-                        Button { session.reload() } label: { Image(systemName: "arrow.clockwise") }
+                        Text(session.userControl ? "Manual" : "Agent")
+                            .font(.caption2).foregroundStyle(.secondary)
                     }
-                    .padding(.horizontal, 12).padding(.bottom, 8)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 5)
                 }
                 BrowserSurface(session: session)
                     .frame(height: session.expanded ? 390 : 126)
@@ -396,6 +422,26 @@ struct BrowserDock: View {
             .padding(12)
             .transition(.move(edge: .trailing).combined(with: .opacity))
             .onAppear { withAnimation { appear = true } }
+            .onChange(of: session.currentURL) { newURL in
+                if !addressFocused { addressInput = newURL }
+            }
+        }
+    }
+
+    private func openAddress() {
+        let text = addressInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        addressFocused = false
+        Task {
+            session.userControl = false
+            defer { session.userControl = true }
+            if text.hasPrefix("https://") {
+                _ = try? await session.navigate(text)
+            } else if text.contains(".") && !text.contains(" ") {
+                _ = try? await session.navigate("https://" + text)
+            } else {
+                _ = try? await session.search(text)
+            }
         }
     }
 }
