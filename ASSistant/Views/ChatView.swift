@@ -52,6 +52,11 @@ struct ChatView: View {
                     ScrollViewReader { proxy in
                         ScrollView {
                             LazyVStack(alignment: .leading, spacing: 12) {
+                                if currentMessages.isEmpty {
+                                    welcomeCard
+                                        .padding(.top, 34)
+                                        .padding(.bottom, 18)
+                                }
                                 ForEach(currentMessages) { message in
                                     MessageBubble(message: message,
                                                   onEdit: message.role == "user" ? { editingMessage = message } : nil,
@@ -60,6 +65,7 @@ struct ChatView: View {
                                 }
                                 if isLoading {
                                     HStack(alignment: .top) {
+                                        TypingPulse()
                                         Text(streaming.isEmpty ? (agentStatus.isEmpty ? "Thinking…" : agentStatus) : streaming)
                                             .textSelection(.enabled)
                                             .padding(12)
@@ -116,6 +122,7 @@ struct ChatView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+            .background(AmbientBackground())
             .overlay(alignment: .bottomTrailing) {
                 BrowserDock(session: browser)
                     .padding(.bottom, 100)
@@ -349,7 +356,40 @@ struct ChatView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(.thinMaterial)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.cyan.opacity(0.14)))
+        .padding(.horizontal, 6)
+        .padding(.bottom, 4)
+    }
+
+    private var welcomeCard: some View {
+        VStack(spacing: 15) {
+            AssistantOrb(size: 74)
+                .frame(height: 120)
+            Text("Your assistant, your models")
+                .font(.title2).fontWeight(.bold)
+                .multilineTextAlignment(.center)
+            Text("Search the live web, talk naturally, build mini-apps, and remember what matters.")
+                .font(.subheadline).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 15)
+            VStack(spacing: 9) {
+                SoftActionButton(text: "Research something online", icon: "globe") {
+                    composer = "Search the web and compare options for "
+                }
+                SoftActionButton(text: "Make me a mini app", icon: "hammer.fill") {
+                    buildPrompt = BuildPrompt(text: "Make a useful mini app for ")
+                }
+                SoftActionButton(text: "Start a voice call", icon: "phone.fill") {
+                    showCallMode = true
+                }
+            }
+            .padding(.top, 8)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(18)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.cyan.opacity(0.14)))
     }
 
     private static func extractPhotoText(_ data: Data) async throws -> String {
@@ -429,6 +469,7 @@ struct ChatView: View {
             return
         }
         errorText = ""
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
         let message = store.append(role: "user", text: text, to: thread)
         for candidate in MemoryEngine.candidates(from: text, messageID: message.id, chatID: thread.id) {
             if !MemoryEngine.containsSimilar(candidate, in: store.memories) {
