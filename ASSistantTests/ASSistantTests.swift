@@ -80,4 +80,49 @@ final class ASSistantTests: XCTestCase {
         XCTAssertEqual(try context.fetch(request).count, 1)
     }
 
+    @MainActor
+    func testShoppingRequestsReallyTriggerWebSearch() {
+        XCTAssertTrue(AgentEngine.shouldSearchImmediately(
+            "Search on Amazon and find me a navy blue apron"
+        ))
+        XCTAssertTrue(AgentEngine.shouldSearchImmediately("Compare products online"))
+        XCTAssertFalse(AgentEngine.shouldSearchImmediately("Remember my preferred apron color"))
+    }
+
+    @MainActor
+    func testBrowserOnlyAcceptsPublicHTTPS() {
+        XCTAssertNotNil(BrowserSession.safeURL("https://www.amazon.com/s?k=navy+blue+apron"))
+        XCTAssertNil(BrowserSession.safeURL("http://example.com"))
+        XCTAssertNil(BrowserSession.safeURL("https://localhost/account"))
+        XCTAssertNil(BrowserSession.safeURL("https://127.0.0.1/password"))
+        XCTAssertNil(BrowserSession.safeURL("file:///private/documents"))
+        XCTAssertNil(BrowserSession.safeURL("https://user:pass@example.com"))
+    }
+
+    func testPublishedHTMLCannotContainLiteralCredentials() {
+        XCTAssertThrowsError(try HTMLPublisher.verifyPublicHTML(
+            "<html><script>const token='ghp_1234567890123456789012345'</script></html>"
+        ))
+        XCTAssertNoThrow(try HTMLPublisher.verifyPublicHTML(
+            "<!doctype html><html><body><script>localStorage.setItem('note','hello')</script></body></html>"
+        ))
+    }
+
+    func testSupersededMessagesRemainStoredButDoNotEnterContext() {
+        let chat = ChatThread()
+        let original = ChatMessage(chatID: chat.id, role: "user",
+                                   content: "Remember my obsolete message.",
+                                   status: "superseded")
+        let latest = ChatMessage(chatID: chat.id, role: "user",
+                                 content: "Find a navy apron online.")
+        var provider = ProviderProfile()
+        provider.model = "any"
+        let prepared = MemoryEngine.context(chat: chat, allMessages: [original, latest],
+                                            agent: AgentProfile(), profile: provider,
+                                            memories: [], summaries: [])
+        let transmitted = prepared.messages.map(\.content).joined(separator: "\n")
+        XCTAssertFalse(transmitted.contains("obsolete message"))
+        XCTAssertTrue(transmitted.contains("navy apron"))
+    }
+
 }
