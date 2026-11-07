@@ -18,7 +18,8 @@ struct ProposedTool: Codable, Identifiable {
 enum ToolRouter {
     static let names = ["create_reminder", "create_calendar_event", "schedule_notification",
                         "get_location", "count_contacts", "copy_text", "speak_text", "create_task",
-                        "browser_search", "browser_open", "browser_read", "browser_follow"]
+                        "browser_search", "browser_open", "browser_read", "browser_follow",
+                        "browser_fill_search", "browser_submit_search", "browser_scroll"]
     static func extract(from response: String) -> ProposedTool? {
         guard let start = response.range(of: "<assistant_tool>"),
               let end = response.range(of: "</assistant_tool>", range: start.upperBound..<response.endIndex),
