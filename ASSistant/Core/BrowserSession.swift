@@ -165,7 +165,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
               const id=e.dataset.assistantControl||'E'+(window.__assistantControlCounter=(window.__assistantControlCounter||0)+1);
               e.dataset.assistantControl=id;
               return {id:id,kind:e.tagName.toLowerCase(),
-                text:(e.innerText||e.getAttribute('aria-label')||e.name||'').trim().slice(0,100),
+                text:(e.innerText||e.getAttribute('aria-label')||(e.type==='submit'?e.value:'')||e.name||'').trim().slice(0,100),
                 href:'',inputType:(e.type||'').toLowerCase(),
                 placeholder:e.placeholder||''};
             });
@@ -241,11 +241,13 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         guard !userControl else { throw BrowserFailure.userTookControl }
         guard let field = controls.first(where: { $0.id == id }),
               field.kind == "button" || field.kind == "input",
-              [field.placeholder, field.text].joined(separator: " ")
-                .range(of: "search|find", options: .regularExpression.union(.caseInsensitive)) != nil,
               let host = web.url?.host?.lowercased(),
               ["google.com", "www.google.com", "amazon.com", "www.amazon.com", "bing.com", "www.bing.com"]
                 .contains(host) else { throw BrowserFailure.invalidLink }
+        let label = [field.placeholder, field.text].joined(separator: " ").lowercased()
+        let safeLabel = label.contains("search") || label.contains("find") ||
+            (host.contains("amazon") && label.trimmingCharacters(in: .whitespaces) == "go")
+        guard safeLabel else { throw BrowserFailure.invalidLink }
         let js = #"""
         id => {
           const element=document.querySelector('[data-assistant-control="'+id+'"]');
