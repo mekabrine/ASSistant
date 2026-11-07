@@ -491,6 +491,7 @@ struct ChatView: View {
             previous.status = "superseded"
             store.save(previous)
         }
+        invalidateSummaries(for: thread.id)
         generateAnswer(thread: thread, userPrompt: previousUser.content)
     }
 
@@ -501,12 +502,26 @@ struct ChatView: View {
         let all = currentMessages
         guard let index = all.firstIndex(where: { $0.id == message.id }) else { return }
         // Keep original turns as recoverable revisions, never silently erase them.
+        let invalidatedIDs = Set(all[index...].map(\.id))
         for old in all[index...] {
             var previous = old
             previous.status = "superseded"
             store.save(previous)
         }
+        // Facts extracted from a retracted user message must not survive
+        // the correction or leak into later LLM calls.
+        for fact in store.memories where
+            fact.sourceMessageID.map({ invalidatedIDs.contains($0) }) == true && !fact.pinned {
+            store.delete(fact.id, kind: "memory")
+        }
+        invalidateSummaries(for: thread.id)
         sendText(text)
+    }
+
+    private func invalidateSummaries(for chatID: UUID) {
+        for summary in store.summaries where summary.chatID == chatID {
+            store.delete(summary.id, kind: "summary")
+        }
     }
 
     private func generateAnswer(thread: ChatThread, userPrompt: String) {
