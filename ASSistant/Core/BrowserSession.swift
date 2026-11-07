@@ -7,6 +7,8 @@ struct BrowserElement: Identifiable, Equatable {
     var text: String
     var href: String
     var kind: String
+    var inputType: String = ""
+    var placeholder: String = ""
 }
 
 enum BrowserFailure: LocalizedError {
@@ -37,6 +39,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published var title = "Browser"
     @Published var pageText = ""
     @Published var links: [BrowserElement] = []
+    @Published var controls: [BrowserElement] = []
     @Published var status = "Ready"
     @Published var lastError = ""
     @Published var progress: Double = 0
@@ -119,6 +122,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func read() async throws -> String {
+        guard !userControl else { throw BrowserFailure.userTookControl }
         visible = true
         // Intentionally never copy input values, passwords, cookies, form
         // contents, or page-local storage into the model context.
@@ -136,9 +140,18 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
               text:(e.innerText||e.getAttribute('aria-label')||e.title||'').trim().slice(0,140),
               href:e.href||''};
           }).filter(e=>e.href.startsWith('https://'));
+          const controls=[...document.querySelectorAll('input,button,textarea,[role="button"]')]
+            .filter(e => {const r=e.getBoundingClientRect();return r.width>0&&r.height>0})
+            .slice(0,50).map((e,i)=>{
+              const id='E'+(i+1);e.dataset.assistantControl=id;
+              return {id:id,kind:e.tagName.toLowerCase(),
+                text:(e.innerText||e.getAttribute('aria-label')||e.name||'').trim().slice(0,100),
+                href:'',inputType:(e.type||'').toLowerCase(),
+                placeholder:e.placeholder||''};
+            });
           const roots=[document.querySelector('main'),document.querySelector('article'),document.body].filter(Boolean);
           const text=roots.map(e=>e.innerText||'').sort((a,b)=>b.length-a.length)[0]||'';
-          return {url:location.href,title:document.title||'',text:text.slice(0,20000),links:links};
+          return {url:location.href,title:document.title||'',text:text.slice(0,20000),links:links,controls:controls};
         })()
         """#
         do {
@@ -151,15 +164,92 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                 BrowserElement(id: $0["id"] ?? "", text: $0["text"] ?? "",
                                href: $0["href"] ?? "", kind: "link")
             }
+            controls = ((state["controls"] as? [[String: String]]) ?? []).map {
+                BrowserElement(id: $0["id"] ?? "", text: $0["text"] ?? "",
+                               href: "", kind: $0["kind"] ?? "",
+                               inputType: $0["inputType"] ?? "",
+                               placeholder: $0["placeholder"] ?? "")
+            }
             status = "Page ready"
             var result = "PAGE: " + title + "\nURL: " + currentURL + "\n\n"
             result += String(pageText.prefix(11500)) + "\n\nLINKS:\n"
             result += links.prefix(55).map { "\($0.id) \($0.text): \($0.href)" }.joined(separator: "\n")
+            result += "\nSEARCH/FORM CONTROLS (no input values):\n"
+            result += controls.prefix(30).map {
+                "\($0.id) \($0.kind) \($0.inputType) \($0.text) \($0.placeholder)"
+            }.joined(separator: "\n")
             return String(result.prefix(17500))
         } catch {
             lastError = error.localizedDescription
             throw BrowserFailure.unavailable
         }
+    }
+
+
+    /// Agent may fill ONLY search/query fields, never passwords, emails, or
+    /// arbitrary account forms. No form submission occurs from this command.
+    func fillSearch(id: String, text: String) async throws -> String {
+        guard !userControl else { throw BrowserFailure.userTookControl }
+        guard let field = controls.first(where: { $0.id == id }),
+              field.kind == "input",
+              ["search", "text"].contains(field.inputType),
+              [field.placeholder, field.text].joined(separator: " ")
+                .range(of: "search|find|query", options: .regularExpression.union(.caseInsensitive)) != nil,
+              text.count <= 240 else { throw BrowserFailure.invalidLink }
+        let js = #"""
+        args => {
+          const el=document.querySelector('[data-assistant-control="'+args.id+'"]');
+          if(!el || (el.type!=='search'&&el.type!=='text')) return false;
+          el.focus();el.value=args.value;
+          el.dispatchEvent(new Event('input',{bubbles:true}));
+          el.dispatchEvent(new Event('change',{bubbles:true}));
+          return true;
+        }
+        """#
+        let value = try await web.evaluateJavaScript("(" + js + ")(" +
+            String(data: try JSONSerialization.data(withJSONObject: [
+                "id": id, "value": text
+            ]), encoding: .utf8)! + ")")
+        guard (value as? Bool) == true else { throw BrowserFailure.invalidLink }
+        return "Filled a public page's search field. A search button or return key may still be needed.\n" +
+            (try await read())
+    }
+
+    /// A narrowly scoped submit for website search forms only. Navigation to
+    /// cart/checkout/account/payment operations is never automatically submitted.
+    func submitSearch(id: String) async throws -> String {
+        guard !userControl else { throw BrowserFailure.userTookControl }
+        guard let field = controls.first(where: { $0.id == id }),
+              field.kind == "button" || field.kind == "input",
+              [field.placeholder, field.text].joined(separator: " ")
+                .range(of: "search|find", options: .regularExpression.union(.caseInsensitive)) != nil,
+              let host = web.url?.host?.lowercased(),
+              ["google.com", "www.google.com", "amazon.com", "www.amazon.com", "bing.com", "www.bing.com"]
+                .contains(host) else { throw BrowserFailure.invalidLink }
+        let js = #"""
+        id => {
+          const element=document.querySelector('[data-assistant-control="'+id+'"]');
+          if(!element) return false;
+          const form=element.closest('form');
+          const action=(form?.action||'').toLowerCase();
+          if(!form || !(action.includes('/search') || action.includes('/s?')
+              || action.includes('/s') || action.includes('google.com'))) return false;
+          element.click();
+          return true;
+        }
+        """#
+        let encodedID = String(data: try JSONSerialization.data(withJSONObject: id), encoding: .utf8)!
+        let value = try await web.evaluateJavaScript("(" + js + ")(" + encodedID + ")")
+        guard (value as? Bool) == true else { throw BrowserFailure.invalidLink }
+        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        return try await read()
+    }
+
+    func scrollDown() async throws -> String {
+        guard !userControl else { throw BrowserFailure.userTookControl }
+        _ = try await web.evaluateJavaScript("window.scrollBy(0, Math.min(900, window.innerHeight))")
+        try? await Task.sleep(nanoseconds: 550_000_000)
+        return try await read()
     }
 
     func close() {
@@ -268,6 +358,14 @@ struct BrowserDock: View {
                 }
                 .padding(10)
                 if session.expanded {
+                    HStack(spacing: 12) {
+                        Button {
+                            session.userControl = false
+                            session.expanded = false
+                        } label: { Label("Return to agent", systemImage: "person.crop.circle.badge.checkmark") }
+                            .font(.caption2)
+                        Spacer()
+                    }.padding(.horizontal, 12).padding(.bottom, 5)
                     HStack(spacing: 12) {
                         Button { session.goBack() } label: { Image(systemName: "chevron.left") }
                         Text(session.currentURL).font(.caption2).lineLimit(1)
