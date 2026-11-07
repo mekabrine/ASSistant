@@ -75,7 +75,7 @@ struct CallModeView: View {
                                   (isListening ? "waveform" : "sparkles"))
                         .font(.system(size: 52, weight: .light))
                         .foregroundStyle(.white)
-                        .contentTransition(.symbolEffect(.replace))
+                        .animation(.easeInOut(duration: 0.25), value: speaker.speaking)
                 }
                 .frame(height: 260)
                 .onAppear {
