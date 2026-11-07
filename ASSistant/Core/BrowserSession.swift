@@ -273,9 +273,10 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func close() {
+        stop()
         visible = false
         expanded = false
-        userControl = false
+        userControl = true
     }
 
     func stop() {
