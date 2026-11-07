@@ -182,4 +182,101 @@ enum HTMLPublisher {
         _ = try HTMLAppBuilder.installURL(for: raw)
         return raw
     }
+    static func verifyPublicHTML(_ html: String) throws {
+        guard html.utf8.count <= HTMLAppBuilder.maxHTMLBytes else { throw HTMLAppError.tooLarge }
+        let secretPatterns = [
+            #"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"#,
+            #"(?:sk-|ghp_|gho_|github_pat_)[A-Za-z0-9_-]{18,}"#,
+            #"AIza[A-Za-z0-9_-]{25,}"#,
+            #"Bearer\s+[A-Za-z0-9._-]{24,}"#
+        ]
+        for pattern in secretPatterns {
+            if html.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil {
+                throw AIRequestError.http(0, "Possible secret detected in generated HTML. Remove secrets before publishing.")
+            }
+        }
+    }
+
+    static func publish(_ app: GeneratedApp) async throws -> String {
+        try verifyPublicHTML(app.html)
+        let mode = UserDefaults.standard.string(forKey: "htmlUploadService") ?? "paste"
+        switch mode {
+        case "gist": return try await uploadToGist(app)
+        case "beacon": return try await uploadToBeacon(app)
+        case "custom":
+            let endpoint = UserDefaults.standard.string(forKey: "publisherEndpoint") ?? ""
+            return try await uploadToCustomEndpoint(app, endpoint: endpoint,
+                bearer: KeychainStore.get("publisher.customToken"))
+        default: return try await uploadToPasteRS(app)
+        }
+    }
+
+    /// No API key or account. POST raw HTML, receive the raw paste URL.
+    /// A HTTP 206 means partial upload: treat it as failure, never import it.
+    static func uploadToPasteRS(_ app: GeneratedApp) async throws -> String {
+        var request = URLRequest(url: URL(string: "https://paste.rs/")!)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 35
+        request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data(app.html.utf8)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 201 else {
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw AIRequestError.http(status, "Anonymous paste upload failed or was truncated. Try Beacon in Settings.")
+        }
+        let raw = String(decoding: data, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: raw), url.scheme == "https",
+              url.host == "paste.rs", !url.path.isEmpty else {
+            throw HTMLAppError.badHostingResponse
+        }
+        try await verifyRemoteHTML(raw, matches: app.html)
+        return raw
+    }
+
+    /// Anonymous multipart HTML hosting. Links are PUBLIC and currently expire
+    /// after 24 hours without an account; not suitable for permanent app source.
+    static func uploadToBeacon(_ app: GeneratedApp) async throws -> String {
+        let boundary = "ASSistant-" + UUID().uuidString
+        var payload = Data()
+        payload.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"app.html\"\r\nContent-Type: text/html\r\n\r\n".utf8))
+        payload.append(Data(app.html.utf8))
+        payload.append(Data("\r\n--\(boundary)--\r\n".utf8))
+        var request = URLRequest(url: URL(string: "https://beacon.host/v1/publish")!)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 45
+        request.httpBody = payload
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let raw = json["fileUrl"] as? String,
+              let url = URL(string: raw),
+              let host = url.host, (host == "beacon.host" || host.hasSuffix(".beacon.host")),
+              url.scheme == "https" else {
+            throw HTMLAppError.badHostingResponse
+        }
+        try await verifyRemoteHTML(raw, matches: app.html)
+        return raw
+    }
+
+    /// Validate content, not just an HTTP 2xx or returned string, before
+    /// passing a third-party URL into HTMLApp's remote import handler.
+    static func verifyRemoteHTML(_ raw: String, matches expected: String) async throws {
+        _ = try HTMLAppBuilder.installURL(for: raw)
+        guard let url = URL(string: raw) else { throw HTMLAppError.invalidSourceURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 30
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse,
+              (200...299).contains(http.statusCode),
+              data.count == Data(expected.utf8).count,
+              data == Data(expected.utf8) else {
+            throw HTMLAppError.badHostingResponse
+        }
+    }
+
 }
