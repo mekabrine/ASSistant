@@ -289,7 +289,8 @@ final class AppStore: ObservableObject {
     }
 
     func messages(in chatID: UUID) -> [ChatMessage] {
-        messages.filter { $0.chatID == chatID }.sorted { $0.createdAt < $1.createdAt }
+        messages.filter { $0.chatID == chatID && $0.status != "superseded" }
+            .sorted { $0.createdAt < $1.createdAt }
     }
 
     func provider(for chat: ChatThread) -> ProviderProfile? {
