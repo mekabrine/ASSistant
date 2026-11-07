@@ -32,6 +32,9 @@ struct ChatView: View {
     @State private var autoBuildStatus = ""
     @State private var appBuildTask: Task<Void, Never>?
     @StateObject private var browser = BrowserSession()
+    @StateObject private var whisper = WhisperRecorder()
+    @AppStorage("dictationEngine") private var dictationEngine = "whisper"
+    @State private var showCallMode = false
     @State private var agentStatus = ""
     @State private var editingMessage: ChatMessage?
 
@@ -124,6 +127,12 @@ struct ChatView: View {
                     Button { newChat() } label: { Image(systemName: "square.and.pencil") }
                 }
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button {
+                        showCallMode = true
+                    } label: {
+                        Image(systemName: "phone.arrow.up.right.fill")
+                    }
+                    .accessibilityLabel("Start voice call mode")
                     Menu {
                         Button("Open live browser") {
                             browser.visible = true
@@ -147,6 +156,14 @@ struct ChatView: View {
                         }
                         Button("Stop speaking") { DeviceTools.shared.stopSpeaking() }
                     } label: { Image(systemName: "ellipsis.circle") }
+                }
+            }
+            .sheet(isPresented: $showCallMode) {
+                if let id = chatID {
+                    CallModeView(chatID: id) { transcript in
+                        sendText(transcript)
+                    }
+                    .environmentObject(store)
                 }
             }
             .sheet(item: $editingMessage) { message in
@@ -229,7 +246,10 @@ struct ChatView: View {
             .onChange(of: speech.transcript) { transcript in
                 if !transcript.isEmpty { composer = transcript }
             }
-            .onDisappear { speech.stop() }
+            .onDisappear {
+                speech.stop()
+                if !showCallMode { whisper.cancel() }
+            }
             .onAppear { ensureChat() }
             .onChange(of: store.database.ready) { _ in ensureChat() }
         }
@@ -247,20 +267,39 @@ struct ChatView: View {
                 .accessibilityLabel("Read text from photo")
                 .disabled(isLoading)
                 Button {
-                    if speech.recording { speech.stop() }
-                    else {
+                    if dictationEngine == "apple" {
+                        if speech.recording { speech.stop() }
+                        else {
+                            Task {
+                                do { try await speech.start() }
+                                catch { errorText = error.localizedDescription }
+                            }
+                        }
+                    } else if whisper.isRecording {
                         Task {
-                            do { try await speech.start() }
+                            do {
+                                let transcript = try await whisper.stopAndTranscribe(
+                                    profile: current.flatMap { store.provider(for: $0) }
+                                )
+                                composer += (composer.isEmpty ? "" : " ") + transcript
+                            } catch { errorText = error.localizedDescription }
+                        }
+                    } else {
+                        Task {
+                            do { try await whisper.start() }
                             catch { errorText = error.localizedDescription }
                         }
                     }
                 } label: {
-                    Image(systemName: speech.recording ? "mic.fill" : "mic")
-                        .foregroundColor(speech.recording ? .red : .blue)
+                    Image(systemName: (whisper.isRecording || speech.recording) ? "mic.fill" : "mic")
+                        .foregroundColor((whisper.isRecording || speech.recording) ? .red : .blue)
                         .font(.title3)
+                        .symbolEffect(.pulse, options: .repeating,
+                                      isActive: whisper.isRecording || speech.recording)
                 }
-                .accessibilityLabel(speech.recording ? "Stop dictation" : "Start dictation")
-                .disabled(isLoading)
+                .accessibilityLabel(whisper.isRecording || speech.recording ? "Stop and transcribe" : "Start dictation")
+                .disabled(isLoading || whisper.isTranscribing)
+                if whisper.isTranscribing { ProgressView().controlSize(.small) }
                 TextEditor(text: $composer)
                     .frame(minHeight: 42, maxHeight: 116)
                     .padding(4)
