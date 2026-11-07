@@ -27,6 +27,8 @@ struct AgentsView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(AmbientBackground())
             .navigationTitle("Agents")
             .sheet(isPresented: $creating) {
                 AgentEditor(agent: AgentProfile(), isNew: true)
