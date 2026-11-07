@@ -45,10 +45,25 @@ enum AgentEngine {
 
     static func shouldSearchImmediately(_ prompt: String) -> Bool {
         let q = prompt.lowercased()
-        let verbs = ["search", "look up", "find me", "find a ", "find an ", "find some",
-                     "shop for", "browse", "amazon", "compare products",
-                     "look for", "research online", "check online", "on the internet"]
-        return verbs.contains(where: q.contains)
+        // Never send a potentially private, local-account question to a public
+        // search engine merely because the user wrote "find".
+        let privateTerms = ["password", "api key", "private key", "access token",
+                            "my contacts", "my messages", "my files", "my photos",
+                            "my calendar", "my health", "social security number",
+                            "bank account"]
+        guard !privateTerms.contains(where: q.contains) else { return false }
+        let explicitWeb = ["search online", "search the web", "search on", "google",
+                           "amazon", "on the internet", "website", "look up online",
+                           "browse online", "find online", "shop for", "where can i buy",
+                           "compare products", "compare prices"]
+        if explicitWeb.contains(where: q.contains) { return true }
+        let finding = ["find a ", "find an ", "find me ", "looking for ", "search for "]
+            .contains(where: q.contains)
+        let commerce = ["apron", "shoes", "laptop", "backpack", "headphones",
+                        "furniture", "shopping", "store", "product", "price",
+                        "hotel", "flight", "restaurant"]
+            .contains(where: q.contains)
+        return finding && commerce
     }
 
     static func run(
