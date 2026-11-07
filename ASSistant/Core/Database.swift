@@ -72,7 +72,7 @@ final class Database {
         }
     }
 
-    private static func makeModel() -> NSManagedObjectModel {
+    static func makeModel() -> NSManagedObjectModel {
         let model = NSManagedObjectModel()
         let entity = NSEntityDescription()
         entity.name = "Record"
