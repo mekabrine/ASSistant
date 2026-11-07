@@ -51,6 +51,8 @@ struct TasksView: View {
                         .font(.footnote).foregroundColor(.secondary)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(AmbientBackground())
             .navigationTitle("Tasks")
             .sheet(isPresented: $showingForm) {
                 TaskEditor { title, details, due, schedule in
