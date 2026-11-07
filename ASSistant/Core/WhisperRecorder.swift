@@ -94,6 +94,7 @@ final class WhisperRecorder: NSObject, ObservableObject {
     private var meter: Timer?
     private var startedAt: Date?
     private var silentSince: Date?
+    private var heardSpeech = false
     var autoStopSilence = false
     var onAutoStop: (() -> Void)?
 
@@ -124,6 +125,7 @@ final class WhisperRecorder: NSObject, ObservableObject {
         recorder = voice
         startedAt = Date()
         silentSince = nil
+        heardSpeech = false
         isRecording = true
         elapsed = 0
         lastError = ""
@@ -139,7 +141,8 @@ final class WhisperRecorder: NSObject, ObservableObject {
         let decibels = Double(recorder.averagePower(forChannel: 0))
         voicePower = max(0, min(1, (decibels + 55) / 50))
         elapsed = Date().timeIntervalSince(startedAt ?? Date())
-        guard autoStopSilence && elapsed > 2.0 else { return }
+        if voicePower > 0.15 { heardSpeech = true }
+        guard autoStopSilence && heardSpeech && elapsed > 2.0 else { return }
         if voicePower < 0.12 {
             if silentSince == nil { silentSince = Date() }
             if let silentSince, Date().timeIntervalSince(silentSince) > 1.7 {
