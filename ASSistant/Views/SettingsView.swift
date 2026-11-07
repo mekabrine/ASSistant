@@ -9,9 +9,15 @@ struct SettingsView: View {
     @State private var editingProvider: ProviderProfile?
     @State private var gistToken = ""
     @State private var publisherToken = ""
+    @State private var speechToken = ""
     @State private var testResult = ""
     @State private var permissionResult = ""
     @AppStorage("publisherEndpoint") private var publisherEndpoint = ""
+    @AppStorage("htmlUploadService") private var htmlUploadService = "paste"
+    @AppStorage("dictationEngine") private var dictationEngine = "whisper"
+    @AppStorage("sttEndpoint") private var sttEndpoint = ""
+    @AppStorage("sttModel") private var sttModel = "gpt-transcribe"
+    @AppStorage("sttRequireKey") private var sttRequireKey = true
     @AppStorage("cloudSyncEnabled") private var cloudSyncEnabled = false
     @AppStorage("autoSummaryEnabled") private var autoSummaryEnabled = true
 
@@ -69,8 +75,54 @@ struct SettingsView: View {
                     Text("Memories are selectively retrieved. Sensitive memories are not auto-included. Full chat history is stored for search and can sync.")
                         .font(.footnote).foregroundColor(.secondary)
                 }
+                Section {
+                    Picker("Dictation engine", selection: $dictationEngine) {
+                        Text("Whisper-compatible API").tag("whisper")
+                        Text("Apple Speech (if working)").tag("apple")
+                    }
+                    .pickerStyle(.segmented)
+                    if dictationEngine == "whisper" {
+                        TextField("Transcription URL (optional if using chat provider)", text: $sttEndpoint)
+                            .keyboardType(.URL).textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                        TextField("Speech model", text: $sttModel)
+                            .autocorrectionDisabled(true).textInputAutocapitalization(.never)
+                        Toggle("Require API key", isOn: $sttRequireKey)
+                        SecureField("Dedicated transcription API key", text: $speechToken)
+                            .autocorrectionDisabled(true).textInputAutocapitalization(.never)
+                        Button("Save speech API key") {
+                            do {
+                                try KeychainStore.put(speechToken, for: "stt.apiKey")
+                                speechToken = ""
+                                testResult = "Speech API key saved on this device."
+                            } catch { testResult = error.localizedDescription }
+                        }
+                        .disabled(speechToken.isEmpty)
+                        Button("Use chat provider key instead") {
+                            KeychainStore.delete("stt.apiKey")
+                            testResult = "Dedicated speech key cleared; using chat provider's local Keychain key."
+                        }
+                        Text("Leave URL blank to use the selected chat provider's /audio/transcriptions route. Example models: gpt-transcribe, whisper-1, whisper-large-v3-turbo. Use a compatible endpoint. Recorded audio is sent to your chosen provider only after you stop recording.")
+                            .font(.footnote).foregroundColor(.secondary)
+                    } else {
+                        Text("Apple Speech recognition may not work on every device. Cloud Whisper does not depend on the Apple keyboard dictation service.")
+                            .font(.footnote).foregroundColor(.secondary)
+                    }
+                    Text("Call mode uses microphone → transcription → agent → spoken reply. It runs only while the app is open.")
+                        .font(.footnote).foregroundColor(.secondary)
+                } header: {
+                    Label("Voice and call mode", systemImage: "waveform")
+                }
                 Section("HTML publishing") {
-                    Text("By default ASSistant publishes generated HTML as an unlisted GitHub Gist. Unlisted does not mean private.")
+                    Picker("Public hosting service", selection: $htmlUploadService) {
+                        Text("No key · paste.rs").tag("paste")
+                        Text("No key · Beacon (24-hour link)").tag("beacon")
+                        Text("GitHub Gist (token)").tag("gist")
+                        Text("My HTTPS upload server").tag("custom")
+                    }
+                    Text("Public upload is optional until you install an HTMLApp. Anyone with the published URL can read the HTML; never publish passwords, tokens or personal data. Paste.rs has rate limits; Beacon anonymous links expire after about 24 hours. Availability depends on these third-party services.")
+                        .font(.footnote).foregroundColor(.secondary)
+                    if htmlUploadService == "gist" {
                         .font(.footnote).foregroundColor(.secondary)
                     SecureField("GitHub Gist token (gist scope)", text: $gistToken)
                         .textInputAutocapitalization(.never)
@@ -82,7 +134,9 @@ struct SettingsView: View {
                             testResult = "Publishing token saved on this device."
                         } catch { testResult = error.localizedDescription }
                     }.disabled(gistToken.isEmpty)
-                    TextField("Optional custom HTTPS publishing endpoint", text: $publisherEndpoint)
+                    }
+                    if htmlUploadService == "custom" {
+                    TextField("HTTPS publishing endpoint", text: $publisherEndpoint)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled(true)
                         .keyboardType(.URL)
@@ -95,6 +149,7 @@ struct SettingsView: View {
                         } catch { testResult = error.localizedDescription }
                     }.disabled(publisherToken.isEmpty)
                     Text("Custom endpoint contract: POST text/html, return JSON {\"url\":\"https://public-host/file.html\"}.")
+                    }
                         .font(.caption2).foregroundColor(.secondary)
                 }
                 Section("Device permissions and native tools") {
