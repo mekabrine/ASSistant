@@ -64,6 +64,8 @@ struct AgentActivityView: View {
                 }
             }
             .searchable(text: $query)
+            .scrollContentBackground(.hidden)
+            .background(AmbientBackground())
             .navigationTitle("Agent Activity")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
