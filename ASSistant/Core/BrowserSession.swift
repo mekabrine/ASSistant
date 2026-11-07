@@ -83,7 +83,26 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         var parts = URLComponents(string: "https://www.google.com/search")!
         parts.queryItems = [URLQueryItem(name: "q", value: terms)]
         guard let url = parts.url else { throw BrowserFailure.badURL }
-        return try await navigate(url.absoluteString)
+        do {
+            let observation = try await navigate(url.absoluteString)
+            let lower = observation.lowercased()
+            if lower.contains("unusual traffic") ||
+                lower.contains("verify you are a human") ||
+                lower.contains("before you continue to google") ||
+                lower.contains("our systems have detected unusual") {
+                status = "Trying alternative search…"
+                var backup = URLComponents(string: "https://www.bing.com/search")!
+                backup.queryItems = [URLQueryItem(name: "q", value: terms)]
+                guard let fallbackURL = backup.url else { return observation }
+                return try await navigate(fallbackURL.absoluteString)
+            }
+            return observation
+        } catch {
+            var backup = URLComponents(string: "https://www.bing.com/search")!
+            backup.queryItems = [URLQueryItem(name: "q", value: terms)]
+            guard let fallbackURL = backup.url else { throw error }
+            return try await navigate(fallbackURL.absoluteString)
+        }
     }
 
     func navigate(_ raw: String) async throws -> String {
@@ -134,7 +153,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             return r.width>0 && r.height>0 && style.visibility!=='hidden';
           }).slice(0,85);
           const links=els.map((e,i)=>{
-            const id='L'+(i+1);
+            const id=e.dataset.assistantLink||'L'+(window.__assistantLinkCounter=(window.__assistantLinkCounter||0)+1);
             e.dataset.assistantLink=id;
             return {id:id,kind:'link',
               text:(e.innerText||e.getAttribute('aria-label')||e.title||'').trim().slice(0,140),
@@ -143,7 +162,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
           const controls=[...document.querySelectorAll('input,button,textarea,[role="button"]')]
             .filter(e => {const r=e.getBoundingClientRect();return r.width>0&&r.height>0})
             .slice(0,50).map((e,i)=>{
-              const id='E'+(i+1);e.dataset.assistantControl=id;
+              const id=e.dataset.assistantControl||'E'+(window.__assistantControlCounter=(window.__assistantControlCounter||0)+1);
+              e.dataset.assistantControl=id;
               return {id:id,kind:e.tagName.toLowerCase(),
                 text:(e.innerText||e.getAttribute('aria-label')||e.name||'').trim().slice(0,100),
                 href:'',inputType:(e.type||'').toLowerCase(),
@@ -304,6 +324,19 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
                  withError error: Error) {
         finish(error)
+    }
+
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                 for navigationAction: WKNavigationAction,
+                 windowFeatures: WKWindowFeatures) -> WKWebView? {
+        // Some shopping links use target=_blank. Reuse the user's visible
+        // browser window instead of silently failing or opening Safari.
+        if navigationAction.targetFrame == nil,
+           let url = navigationAction.request.url,
+           Self.safeURL(url.absoluteString) != nil {
+            web.load(URLRequest(url: url))
+        }
+        return nil
     }
 
     private func finish(_ error: Error) {
