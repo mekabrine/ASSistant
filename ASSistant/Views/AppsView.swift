@@ -49,6 +49,8 @@ struct AppsView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(AmbientBackground())
             .navigationTitle("HTMLApps")
             .sheet(isPresented: $showingBuilder) {
                 AppBuilderScreen(initialPrompt: "")
