@@ -120,37 +120,34 @@ struct SettingsView: View {
                         Text("GitHub Gist (token)").tag("gist")
                         Text("My HTTPS upload server").tag("custom")
                     }
-                    Text("Public upload is optional until you install an HTMLApp. Anyone with the published URL can read the HTML; never publish passwords, tokens or personal data. Paste.rs has rate limits; Beacon anonymous links expire after about 24 hours. Availability depends on these third-party services.")
+                    Text("Publishing is optional until you install an HTMLApp. These URLs are public to anyone who knows them. Never publish tokens or personal data. Paste.rs is rate-limited; anonymous Beacon files expire after roughly 24 hours.")
                         .font(.footnote).foregroundColor(.secondary)
                     if htmlUploadService == "gist" {
-                        .font(.footnote).foregroundColor(.secondary)
-                    SecureField("GitHub Gist token (gist scope)", text: $gistToken)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled(true)
-                    Button(KeychainStore.get("github.publisher") == nil ? "Save GitHub token" : "Replace GitHub token") {
-                        do {
-                            try KeychainStore.put(gistToken, for: "github.publisher")
-                            gistToken = ""
-                            testResult = "Publishing token saved on this device."
-                        } catch { testResult = error.localizedDescription }
-                    }.disabled(gistToken.isEmpty)
+                        SecureField("GitHub token (gist permission)", text: $gistToken)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled(true)
+                        Button("Save Gist token") {
+                            do {
+                                try KeychainStore.put(gistToken, for: "github.publisher")
+                                gistToken = ""
+                                testResult = "Gist token saved locally."
+                            } catch { testResult = error.localizedDescription }
+                        }.disabled(gistToken.isEmpty)
                     }
                     if htmlUploadService == "custom" {
-                    TextField("HTTPS publishing endpoint", text: $publisherEndpoint)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled(true)
-                        .keyboardType(.URL)
-                    SecureField("Custom endpoint bearer token (optional)", text: $publisherToken)
-                    Button("Save custom endpoint token") {
-                        do {
-                            try KeychainStore.put(publisherToken, for: "publisher.customToken")
-                            publisherToken = ""
-                            testResult = "Custom endpoint token saved."
-                        } catch { testResult = error.localizedDescription }
-                    }.disabled(publisherToken.isEmpty)
-                    Text("Custom endpoint contract: POST text/html, return JSON {\"url\":\"https://public-host/file.html\"}.")
+                        TextField("HTTPS publishing endpoint", text: $publisherEndpoint)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true).keyboardType(.URL)
+                        SecureField("Custom endpoint bearer token (optional)", text: $publisherToken)
+                        Button("Save custom endpoint token") {
+                            do {
+                                try KeychainStore.put(publisherToken, for: "publisher.customToken")
+                                publisherToken = ""
+                                testResult = "Custom endpoint token saved locally."
+                            } catch { testResult = error.localizedDescription }
+                        }.disabled(publisherToken.isEmpty)
+                        Text("Custom contract: POST text/html; reply with JSON containing the public HTTPS url.")
+                            .font(.caption2).foregroundColor(.secondary)
                     }
-                        .font(.caption2).foregroundColor(.secondary)
                 }
                 Section("Device permissions and native tools") {
                     Button("Request notifications permission") {
