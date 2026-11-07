@@ -31,6 +31,9 @@ struct ChatView: View {
     @State private var showAppDecision = false
     @State private var autoBuildStatus = ""
     @State private var appBuildTask: Task<Void, Never>?
+    @StateObject private var browser = BrowserSession()
+    @State private var agentStatus = ""
+    @State private var editingMessage: ChatMessage?
 
     private var current: ChatThread? { store.chats.first(where: { $0.id == chatID }) }
     private var currentMessages: [ChatMessage] {
@@ -46,12 +49,14 @@ struct ChatView: View {
                         ScrollView {
                             LazyVStack(alignment: .leading, spacing: 12) {
                                 ForEach(currentMessages) { message in
-                                    MessageBubble(message: message)
+                                    MessageBubble(message: message,
+                                                  onEdit: message.role == "user" ? { editingMessage = message } : nil,
+                                                  onRegenerate: message.role == "assistant" ? { regenerate(message) } : nil)
                                         .id(message.id)
                                 }
                                 if isLoading {
                                     HStack(alignment: .top) {
-                                        Text(streaming.isEmpty ? "Thinking…" : streaming)
+                                        Text(streaming.isEmpty ? (agentStatus.isEmpty ? "Thinking…" : agentStatus) : streaming)
                                             .textSelection(.enabled)
                                             .padding(12)
                                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -107,6 +112,10 @@ struct ChatView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+            .overlay(alignment: .bottomTrailing) {
+                BrowserDock(session: browser)
+                    .padding(.bottom, 100)
+            }
             .navigationTitle(current?.title ?? "ASSistant")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -116,6 +125,18 @@ struct ChatView: View {
                 }
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     Menu {
+                        Button("Open live browser") {
+                            browser.visible = true
+                            browser.expanded = true
+                            browser.userControl = true
+                            if browser.currentURL.isEmpty {
+                                Task {
+                                    browser.userControl = false
+                                    _ = try? await browser.navigate("https://www.google.com")
+                                    browser.userControl = true
+                                }
+                            }
+                        }
                         Button("Generate HTMLApp") {
                             buildPrompt = BuildPrompt(text: composer.isEmpty ? "Build a useful app based on this chat: " + currentMessages.suffix(5).map(\.content).joined(separator: "\n") : composer)
                         }
@@ -126,6 +147,11 @@ struct ChatView: View {
                         }
                         Button("Stop speaking") { DeviceTools.shared.stopSpeaking() }
                     } label: { Image(systemName: "ellipsis.circle") }
+                }
+            }
+            .sheet(item: $editingMessage) { message in
+                MessageEditSheet(original: message.content) { revision in
+                    reviseUserMessage(message, to: revision)
                 }
             }
             .sheet(isPresented: $showChats) {
@@ -349,40 +375,85 @@ struct ChatView: View {
     }
 
     private func send() {
+        let value = composer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return }
+        composer = ""
+        sendText(value)
+    }
+
+    private func sendText(_ text: String) {
         guard let thread = current, !isLoading else { return }
-        let text = composer.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        guard let profile = store.provider(for: thread) else {
+        guard store.provider(for: thread) != nil else {
             errorText = "Add an API provider in Settings first."
             return
         }
-        composer = ""
-        streaming = ""
         errorText = ""
         let message = store.append(role: "user", text: text, to: thread)
         for candidate in MemoryEngine.candidates(from: text, messageID: message.id, chatID: thread.id) {
-            if !MemoryEngine.containsSimilar(candidate, in: store.memories) { store.save(candidate) }
+            if !MemoryEngine.containsSimilar(candidate, in: store.memories) {
+                store.save(candidate)
+            }
         }
+        generateAnswer(thread: thread, userPrompt: text)
+    }
+
+    private func regenerate(_ message: ChatMessage) {
+        guard !isLoading, let thread = current else { return }
+        let visible = currentMessages
+        guard let index = visible.firstIndex(where: { $0.id == message.id }) else { return }
+        for old in visible[index...] where old.role == "assistant" {
+            var previous = old
+            previous.status = "superseded"
+            store.save(previous)
+        }
+        guard let latestUser = store.messages(in: thread.id).last(where: { $0.role == "user" }) else {
+            return
+        }
+        generateAnswer(thread: thread, userPrompt: latestUser.content)
+    }
+
+    private func reviseUserMessage(_ message: ChatMessage, to revision: String) {
+        guard !isLoading, let thread = current else { return }
+        let text = revision.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let all = currentMessages
+        guard let index = all.firstIndex(where: { $0.id == message.id }) else { return }
+        // Keep original turns as recoverable revisions, never silently erase them.
+        for old in all[index...] {
+            var previous = old
+            previous.status = "superseded"
+            store.save(previous)
+        }
+        sendText(text)
+    }
+
+    private func generateAnswer(thread: ChatThread, userPrompt: String) {
+        guard !isLoading, let profile = store.provider(for: thread) else { return }
+        streaming = ""
+        agentStatus = "Preparing context…"
+        errorText = ""
         let context = MemoryEngine.context(chat: thread, allMessages: store.messages,
-                                           agent: store.agent(for: thread),
-                                           profile: profile, memories: store.memories, summaries: store.summaries)
+                                           agent: store.agent(for: thread), profile: profile,
+                                           memories: store.memories, summaries: store.summaries)
         store.lastDiagnostic = context.diagnostic
-        var requestMessages = context.messages
-        if !requestMessages.isEmpty {
-            requestMessages[0].content += "\n" + MemoryEngine.agentToolInstructions
-        }
         isLoading = true
         task = Task {
             do {
-                let raw = try await LLMService.request(profile: profile, messages: requestMessages) { part in
-                    streaming += part
-                }
-                let tool = ToolRouter.extract(from: raw)
-                let wantApp = raw.contains("[[BUILD_HTMLAPP]]")
-                let cleaned = ToolRouter.cleanedResponse(raw).replacingOccurrences(of: "[[BUILD_HTMLAPP]]", with: "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                _ = store.append(role: "assistant", text: cleaned, to: thread)
-                if let tool {
+                let outcome = try await AgentEngine.run(
+                    profile: profile, input: context.messages,
+                    prompt: userPrompt,
+                    enableWeb: store.agent(for: thread).allowedTools.contains("web"),
+                    browser: browser,
+                    onStatus: { status in
+                        agentStatus = status
+                        streaming = ""
+                    },
+                    onDelta: { piece in
+                        if streaming.count < 24000 { streaming += piece }
+                    }
+                )
+                _ = store.append(role: "assistant", text: outcome.text, to: thread)
+                if let tool = outcome.pendingTool {
                     let category: String
                     switch tool.name {
                     case "create_reminder": category = "reminder"
@@ -398,20 +469,25 @@ struct ChatView: View {
                         pendingTool = tool
                         toolAlert = true
                     } else {
-                        _ = store.append(role: "assistant", text: "This agent is not allowed to use the \(category) tool.", to: thread)
+                        _ = store.append(role: "assistant", text:
+                            "This agent is not allowed to use the \(category) tool.", to: thread)
                     }
                 }
-                if wantApp {
-                    suggestedAppPrompt = text
+                if outcome.wantsHTMLApp {
+                    suggestedAppPrompt = userPrompt
                     showAppDecision = true
                 }
                 if autoSummaryEnabled { await summarizeIfNeeded(thread: thread, profile: profile) }
             } catch is CancellationError {
-                if !streaming.isEmpty { _ = store.append(role: "assistant", text: streaming + "\n[Interrupted]", to: thread) }
+                if !streaming.isEmpty, !streaming.contains("<assistant_tool>") {
+                    _ = store.append(role: "assistant", text:
+                        streaming + "\n[Interrupted]", to: thread)
+                }
             } catch {
                 errorText = error.localizedDescription
             }
             isLoading = false
+            agentStatus = ""
             streaming = ""
         }
     }
@@ -434,23 +510,86 @@ struct ChatView: View {
 
 private struct MessageBubble: View {
     let message: ChatMessage
+    let onEdit: (() -> Void)?
+    let onRegenerate: (() -> Void)?
     private var isUser: Bool { message.role == "user" }
 
     var body: some View {
-        HStack {
-            if isUser { Spacer(minLength: 24) }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(isUser ? "You" : "ASSistant")
-                    .font(.caption2).foregroundColor(.secondary)
+        HStack(alignment: .top, spacing: 10) {
+            if isUser { Spacer(minLength: 26) }
+            if !isUser {
+                Image(systemName: "sparkle")
+                    .font(.caption)
+                    .foregroundStyle(.cyan)
+                    .padding(8)
+                    .background(Color.cyan.opacity(0.12), in: Circle())
+            }
+            VStack(alignment: .leading, spacing: 7) {
+                HStack {
+                    Text(isUser ? "You" : "ASSistant")
+                        .font(.caption2).fontWeight(.semibold)
+                        .foregroundStyle(isUser ? Color.white.opacity(0.85) : Color.secondary)
+                    Spacer()
+                    Text(message.createdAt, style: .time)
+                        .font(.caption2)
+                        .foregroundStyle(isUser ? Color.white.opacity(0.65) : Color.secondary)
+                }
                 Text(message.content)
+                    .font(.body)
                     .textSelection(.enabled)
+                    .tint(isUser ? .white : .blue)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(12)
-            .background(isUser ? Color.blue.opacity(0.2) : Color.secondary.opacity(0.12),
-                        in: RoundedRectangle(cornerRadius: 14))
-            .contextMenu { Button("Copy") { UIPasteboard.general.string = message.content } }
-            if !isUser { Spacer(minLength: 24) }
+            .padding(13)
+            .background(
+                isUser
+                  ? AnyShapeStyle(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+                  : AnyShapeStyle(Color.secondary.opacity(0.11)),
+                in: RoundedRectangle(cornerRadius: 17)
+            )
+            .foregroundStyle(isUser ? Color.white : Color.primary)
+            .contextMenu {
+                Button("Copy") { UIPasteboard.general.string = message.content }
+                if let onEdit { Button("Edit message", systemImage: "pencil", action: onEdit) }
+                if let onRegenerate { Button("Regenerate answer", systemImage: "arrow.clockwise", action: onRegenerate) }
+            }
+            if !isUser { Spacer(minLength: 18) }
+        }
+        .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+    }
+}
+
+private struct MessageEditSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State var revision: String
+    let onSave: (String) -> Void
+
+    init(original: String, onSave: @escaping (String) -> Void) {
+        _revision = State(initialValue: original)
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack {
+                TextEditor(text: $revision)
+                    .padding(12)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .padding()
+                Text("Editing this turn starts a new response and preserves the previous turns as history.")
+                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal)
+            }
+            .navigationTitle("Edit message")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save & resend") {
+                        onSave(revision)
+                        dismiss()
+                    }
+                    .disabled(revision.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
         }
     }
 }
