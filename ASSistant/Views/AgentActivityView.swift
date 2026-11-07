@@ -26,8 +26,14 @@ struct AgentActivityView: View {
                 }
                 Section("Recent activity") {
                     if displayed.isEmpty {
-                        ContentUnavailableView("No actions yet", systemImage: "clock.arrow.circlepath",
-                                               description: Text("Web searches and approved tools appear here."))
+                        VStack(spacing: 7) {
+                            Image(systemName: "clock.arrow.circlepath").font(.title2)
+                            Text("No actions yet").font(.headline)
+                            Text("Web searches and approved tools appear here.").font(.caption)
+                        }
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding()
                     }
                     ForEach(displayed) { audit in
                         VStack(alignment: .leading, spacing: 8) {
