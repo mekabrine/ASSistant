@@ -1,4 +1,5 @@
 import XCTest
+import CoreData
 @testable import ASSistant
 
 final class ASSistantTests: XCTestCase {
@@ -54,4 +55,29 @@ final class ASSistantTests: XCTestCase {
         XCTAssertEqual(proposal?.name, "create_reminder")
         XCTAssertNil(ToolRouter.extract(from: "Created a reminder!"))
     }
+    func testCoreDataLaunchModelHasNonReservedTombstone() throws {
+        let model = Database.makeModel()
+        let entity = try XCTUnwrap(model.entitiesByName["Record"])
+        XCTAssertNotNil(entity.attributesByName["tombstoneFlag"])
+        XCTAssertNil(entity.attributesByName["deleted"],
+                     "Using NSManagedObject's built-in deletion property can crash KVC at startup.")
+
+        let container = NSPersistentContainer(name: "ASSistantModelSmokeTest", managedObjectModel: model)
+        let description = NSPersistentStoreDescription()
+        description.type = NSInMemoryStoreType
+        container.persistentStoreDescriptions = [description]
+        var openingError: Error?
+        container.loadPersistentStores { _, error in openingError = error }
+        XCTAssertNil(openingError)
+        let context = container.viewContext
+        let item = NSEntityDescription.insertNewObject(forEntityName: "Record", into: context)
+        item.setValue("test", forKey: "kind")
+        item.setValue("0001", forKey: "recordID")
+        item.setValue(false, forKey: "tombstoneFlag")
+        try context.save()
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Record")
+        request.predicate = NSPredicate(format: "kind == %@ AND tombstoneFlag == NO", "test")
+        XCTAssertEqual(try context.fetch(request).count, 1)
+    }
+
 }
