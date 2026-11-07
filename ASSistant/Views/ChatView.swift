@@ -372,15 +372,7 @@ struct ChatView: View {
                 localApp = app
                 store.save(app)
                 autoBuildStatus = "Uploading the HTML file…"
-                let endpoint = UserDefaults.standard.string(forKey: "publisherEndpoint") ?? ""
-                let raw: String
-                if endpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    raw = try await HTMLPublisher.uploadToGist(app)
-                } else {
-                    raw = try await HTMLPublisher.uploadToCustomEndpoint(
-                        app, endpoint: endpoint, bearer: KeychainStore.get("publisher.customToken")
-                    )
-                }
+                let raw = try await HTMLPublisher.publish(app)
                 try Task.checkCancellation()
                 var published = app
                 published.sourceURL = raw
