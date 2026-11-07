@@ -25,7 +25,7 @@ enum MemoryEngine {
         summaries: [SessionSummary]
     ) -> PreparedContext {
         let conversation = allMessages.filter { $0.chatID == chat.id }
-            .filter { $0.role == "user" || $0.role == "assistant" }
+            .filter { ($0.role == "user" || $0.role == "assistant") && $0.status != "superseded" }
             .sorted { $0.createdAt < $1.createdAt }
         let query = conversation.last(where: { $0.role == "user" })?.content ?? ""
         let queryWords = words(query)
