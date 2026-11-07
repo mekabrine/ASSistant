@@ -87,6 +87,8 @@ final class ASSistantTests: XCTestCase {
         ))
         XCTAssertTrue(AgentEngine.shouldSearchImmediately("Compare products online"))
         XCTAssertFalse(AgentEngine.shouldSearchImmediately("Remember my preferred apron color"))
+        XCTAssertFalse(AgentEngine.shouldSearchImmediately("Find my passwords in my files"))
+        XCTAssertFalse(AgentEngine.shouldSearchImmediately("Search my contacts for a phone number"))
     }
 
     @MainActor
