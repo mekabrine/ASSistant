@@ -7,80 +7,139 @@ extension Notification.Name {
 }
 
 final class Database {
-    let container: NSPersistentCloudKitContainer
+    // Keep Core Data for now to preserve any existing on-device data. A later
+    // move to GRDB must have an explicit, tested migration and CloudKit sync plan.
+    private(set) var container: NSPersistentContainer
     private(set) var ready = false
-    private(set) var syncMessage = "Loading local database"
+    private(set) var syncMessage = "Preparing local storage…"
     let cloudRequested: Bool
 
+    private let model: NSManagedObjectModel
+    private let storeURL: URL
+
     init() {
+        let defaults = UserDefaults.standard
+        // Safe startup: iCloud is an optional opt-in, NOT presumed to work with
+        // unsigned/sideloaded signing. The user can enable it in Settings.
+        cloudRequested = defaults.bool(forKey: "cloudSyncEnabled")
+        let interrupted = defaults.bool(forKey: "assistant.databaseLaunchInProgress")
+        if interrupted {
+            defaults.set(true, forKey: "assistant.cloudRecoveryMode")
+        }
+        defaults.set(true, forKey: "assistant.databaseLaunchInProgress")
+
+        model = Self.makeModel()
+        let directory = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask
+        )[0]
+        storeURL = directory.appendingPathComponent("ASSistant.sqlite")
+        do {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        } catch {
+            NSLog("ASSistant: unable to create application-support directory: %@", error.localizedDescription)
+        }
+
+        // Recovery disables CloudKit on subsequent launches until the user
+        // explicitly chooses to retry. It never wipes the local database.
+        let cloudAllowed = cloudRequested && !defaults.bool(forKey: "assistant.cloudRecoveryMode")
+        let primary: NSPersistentContainer
+        if cloudAllowed {
+            primary = NSPersistentCloudKitContainer(name: "ASSistant", managedObjectModel: model)
+        } else {
+            primary = NSPersistentContainer(name: "ASSistant", managedObjectModel: model)
+        }
+        container = primary
+        primary.persistentStoreDescriptions = [Self.makeDescription(url: storeURL, cloud: cloudAllowed)]
+        primary.loadPersistentStores { [weak self] _, error in
+            guard let self else { return }
+            if let error, cloudAllowed {
+                NSLog("ASSistant: CloudKit store initialization failed; switching to local storage: %@", error.localizedDescription)
+                UserDefaults.standard.set(true, forKey: "assistant.cloudRecoveryMode")
+                self.openLocalFallback(after: error)
+                return
+            }
+            self.completeLoad(
+                container: primary,
+                error: error,
+                message: cloudAllowed
+                    ? "CloudKit store opened; sync requires valid signing, account and network."
+                    : (self.cloudRequested
+                        ? "iCloud is paused in recovery mode. Local data is available."
+                        : "Local storage ready. Enable iCloud in Settings when correctly signed.")
+            )
+        }
+    }
+
+    private static func makeModel() -> NSManagedObjectModel {
         let model = NSManagedObjectModel()
         let entity = NSEntityDescription()
         entity.name = "Record"
         entity.managedObjectClassName = NSStringFromClass(NSManagedObject.self)
-        func field(_ key: String, _ type: NSAttributeType) -> NSAttributeDescription {
-            let property = NSAttributeDescription()
-            property.name = key
-            property.attributeType = type
-            property.isOptional = true
-            return property
+        func property(_ name: String, _ type: NSAttributeType) -> NSAttributeDescription {
+            let field = NSAttributeDescription()
+            field.name = name
+            field.attributeType = type
+            field.isOptional = true
+            return field
         }
         entity.properties = [
-            field("recordID", .stringAttributeType),
-            field("kind", .stringAttributeType),
-            field("payload", .binaryDataAttributeType),
-            field("updatedAt", .dateAttributeType),
-            field("deleted", .booleanAttributeType)
+            property("recordID", .stringAttributeType),
+            property("kind", .stringAttributeType),
+            property("payload", .binaryDataAttributeType),
+            property("updatedAt", .dateAttributeType),
+            property("deleted", .booleanAttributeType)
         ]
         model.entities = [entity]
-        container = NSPersistentCloudKitContainer(name: "ASSistant", managedObjectModel: model)
-        let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("ASSistant.sqlite")
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        return model
+    }
+
+    private static func makeDescription(url: URL, cloud: Bool) -> NSPersistentStoreDescription {
         let description = NSPersistentStoreDescription(url: url)
+        description.shouldMigrateStoreAutomatically = true
+        description.shouldInferMappingModelAutomatically = true
         description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
         description.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
-        cloudRequested = UserDefaults.standard.object(forKey: "cloudSyncEnabled") as? Bool ?? true
-        if cloudRequested {
+        if cloud {
             description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
                 containerIdentifier: "iCloud.com.mekabrine.ASSistant"
             )
         }
-        container.persistentStoreDescriptions = [description]
-        container.loadPersistentStores { [weak self] _, error in
+        return description
+    }
+
+    private func openLocalFallback(after cloudError: Error) {
+        // Never invoke loadPersistentStores twice on the same container.
+        // A fresh NSPersistentContainer avoids a partially initialized
+        // CloudKit stack and preserves the original on-disk store.
+        let fallback = NSPersistentContainer(name: "ASSistant", managedObjectModel: model)
+        fallback.persistentStoreDescriptions = [Self.makeDescription(url: storeURL, cloud: false)]
+        fallback.loadPersistentStores { [weak self] _, error in
             guard let self else { return }
-            if let error, self.cloudRequested {
-                // Unsigned/sideloaded builds may lack functional CloudKit entitlements.
-                // Open the SAME SQLite file locally rather than replacing the user's data.
-                let fallback = NSPersistentStoreDescription(url: url)
-                fallback.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
-                fallback.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
-                self.container.persistentStoreDescriptions = [fallback]
-                self.container.loadPersistentStores { [weak self] _, localError in
-                    guard let self else { return }
-                    let status = localError.map { "Local database failed: \($0.localizedDescription)" }
-                        ?? "iCloud unavailable (\(error.localizedDescription)); using local data"
-                    self.completeLoad(isReady: localError == nil, message: status)
-                }
-                return
-            }
-            let status = error.map { "Local database failed: \($0.localizedDescription)" }
-                ?? (self.cloudRequested ? "iCloud sync configured (requires valid Apple signing/account)" : "Local-only mode")
-            self.completeLoad(isReady: error == nil, message: status)
+            let message = error == nil
+                ? "CloudKit unavailable (\(cloudError.localizedDescription)); operating locally."
+                : "Local storage could not open: \(error!.localizedDescription)"
+            self.completeLoad(container: fallback, error: error, message: message)
         }
     }
 
-    private func completeLoad(isReady: Bool, message: String) {
+    private func completeLoad(
+        container loaded: NSPersistentContainer,
+        error: Error?,
+        message: String
+    ) {
         DispatchQueue.main.async {
-            self.ready = isReady
+            self.container = loaded
+            self.ready = error == nil
             self.syncMessage = message
-            if isReady { self.configureContext() }
+            if error == nil {
+                loaded.viewContext.automaticallyMergesChangesFromParent = true
+                loaded.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+            }
+            UserDefaults.standard.set(false, forKey: "assistant.databaseLaunchInProgress")
             NotificationCenter.default.post(name: .assistantStoreReady, object: nil)
         }
-    }
-
-    private func configureContext() {
-        container.viewContext.automaticallyMergesChangesFromParent = true
-        container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
     }
 
     func all<T: Decodable>(_ kind: String, as type: T.Type) -> [T] {
@@ -114,7 +173,8 @@ final class Database {
             object.setValue(bytes, forKey: "payload")
             object.setValue(Date(), forKey: "updatedAt")
             object.setValue(false, forKey: "deleted")
-            try? context.save()
+            do { try context.save() }
+            catch { NSLog("ASSistant: saving %@ failed: %@", kind, error.localizedDescription) }
         }
     }
 
@@ -128,7 +188,8 @@ final class Database {
                 object.setValue(true, forKey: "deleted")
                 object.setValue(Date(), forKey: "updatedAt")
             }
-            try? context.save()
+            do { try context.save() }
+            catch { NSLog("ASSistant: deleting %@ failed: %@", kind, error.localizedDescription) }
         }
     }
 }
