@@ -325,6 +325,7 @@ struct ChatView: View {
                 Button {
                     if isLoading {
                         task?.cancel()
+                        browser.stop()
                     } else { send() }
                 } label: {
                     Image(systemName: isLoading ? "stop.circle.fill" : "arrow.up.circle.fill")
