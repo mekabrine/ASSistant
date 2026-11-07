@@ -636,7 +636,8 @@ private struct MessageBubble: View {
                         .font(.caption2)
                         .foregroundStyle(isUser ? Color.white.opacity(0.65) : Color.secondary)
                 }
-                Text(message.content)
+                Text((try? AttributedString(markdown: message.content))
+                     ?? AttributedString(message.content))
                     .font(.body)
                     .textSelection(.enabled)
                     .tint(isUser ? .white : .blue)
