@@ -206,13 +206,7 @@ struct AppBuilderScreen: View {
                 let validHTML = try HTMLAppBuilder.normalizedHTML(html)
                 html = validHTML
                 let app = currentApp()
-                let uploaded: String
-                if publisherEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    uploaded = try await HTMLPublisher.uploadToGist(app)
-                } else {
-                    uploaded = try await HTMLPublisher.uploadToCustomEndpoint(app, endpoint: publisherEndpoint,
-                        bearer: KeychainStore.get("publisher.customToken"))
-                }
+                let uploaded = try await HTMLPublisher.publish(app)
                 sourceURL = uploaded
                 store.save(currentApp())
             } catch { errorText = error.localizedDescription }
