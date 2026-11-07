@@ -37,6 +37,7 @@ struct ChatView: View {
     @State private var showCallMode = false
     @State private var agentStatus = ""
     @State private var editingMessage: ChatMessage?
+    @State private var showActivity = false
 
     private var current: ChatThread? { store.chats.first(where: { $0.id == chatID }) }
     private var currentMessages: [ChatMessage] {
@@ -128,6 +129,12 @@ struct ChatView: View {
                 }
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     Button {
+                        showActivity = true
+                    } label: {
+                        Image(systemName: "list.bullet.rectangle")
+                    }
+                    .accessibilityLabel("Agent activity timeline")
+                    Button {
                         showCallMode = true
                     } label: {
                         Image(systemName: "phone.arrow.up.right.fill")
@@ -157,6 +164,9 @@ struct ChatView: View {
                         Button("Stop speaking") { DeviceTools.shared.stopSpeaking() }
                     } label: { Image(systemName: "ellipsis.circle") }
                 }
+            }
+            .sheet(isPresented: $showActivity) {
+                AgentActivityView().environmentObject(store)
             }
             .sheet(isPresented: $showCallMode) {
                 if let id = chatID {
@@ -431,16 +441,16 @@ struct ChatView: View {
     private func regenerate(_ message: ChatMessage) {
         guard !isLoading, let thread = current else { return }
         let visible = currentMessages
-        guard let index = visible.firstIndex(where: { $0.id == message.id }) else { return }
-        for old in visible[index...] where old.role == "assistant" {
+        guard let index = visible.firstIndex(where: { $0.id == message.id }),
+              let previousUser = visible[..<index].last(where: { $0.role == "user" }) else { return }
+        // Regenerating an older answer branches from its preceding user turn.
+        // Later messages stay saved as superseded revisions, not deleted.
+        for old in visible[index...] {
             var previous = old
             previous.status = "superseded"
             store.save(previous)
         }
-        guard let latestUser = store.messages(in: thread.id).last(where: { $0.role == "user" }) else {
-            return
-        }
-        generateAnswer(thread: thread, userPrompt: latestUser.content)
+        generateAnswer(thread: thread, userPrompt: previousUser.content)
     }
 
     private func reviseUserMessage(_ message: ChatMessage, to revision: String) {
@@ -481,6 +491,10 @@ struct ChatView: View {
                     },
                     onDelta: { piece in
                         if streaming.count < 24000 { streaming += piece }
+                    },
+                    onBrowserStep: { name, observation in
+                        store.save(ToolAudit(tool: name, detail: userPrompt,
+                                             approved: true, result: observation))
                     }
                 )
                 _ = store.append(role: "assistant", text: outcome.text, to: thread)
