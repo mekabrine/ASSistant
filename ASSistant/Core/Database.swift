@@ -84,12 +84,17 @@ final class Database {
             field.isOptional = true
             return field
         }
+        // "deleted" collides with NSManagedObject's built-in deletion state
+        // on Objective-C/KVC. Use a distinct persisted attribute instead.
+        let tombstone = property("tombstoneFlag", .booleanAttributeType)
+        tombstone.renamingIdentifier = "deleted"
+        tombstone.defaultValue = false
         entity.properties = [
             property("recordID", .stringAttributeType),
             property("kind", .stringAttributeType),
             property("payload", .binaryDataAttributeType),
             property("updatedAt", .dateAttributeType),
-            property("deleted", .booleanAttributeType)
+            tombstone
         ]
         model.entities = [entity]
         return model
@@ -148,7 +153,7 @@ final class Database {
         var result: [T] = []
         context.performAndWait {
             let request = NSFetchRequest<NSManagedObject>(entityName: "Record")
-            request.predicate = NSPredicate(format: "kind == %@ AND (deleted == NO OR deleted == nil)", kind)
+            request.predicate = NSPredicate(format: "kind == %@ AND (tombstoneFlag == NO OR tombstoneFlag == nil)", kind)
             let objects = (try? context.fetch(request)) ?? []
             let decoder = JSONDecoder()
             result = objects.compactMap { object in
@@ -172,7 +177,7 @@ final class Database {
             object.setValue(kind, forKey: "kind")
             object.setValue(bytes, forKey: "payload")
             object.setValue(Date(), forKey: "updatedAt")
-            object.setValue(false, forKey: "deleted")
+            object.setValue(false, forKey: "tombstoneFlag")
             do { try context.save() }
             catch { NSLog("ASSistant: saving %@ failed: %@", kind, error.localizedDescription) }
         }
