@@ -12,7 +12,7 @@ struct SettingsView: View {
     @State private var testResult = ""
     @State private var permissionResult = ""
     @AppStorage("publisherEndpoint") private var publisherEndpoint = ""
-    @AppStorage("cloudSyncEnabled") private var cloudSyncEnabled = true
+    @AppStorage("cloudSyncEnabled") private var cloudSyncEnabled = false
     @AppStorage("autoSummaryEnabled") private var autoSummaryEnabled = true
 
     var body: some View {
@@ -44,8 +44,24 @@ struct SettingsView: View {
                 }
                 Section("iCloud synchronization") {
                     Toggle("Sync data with iCloud", isOn: $cloudSyncEnabled)
+                        .onChange(of: cloudSyncEnabled) { enabled in
+                            if enabled {
+                                UserDefaults.standard.set(false, forKey: "assistant.cloudRecoveryMode")
+                                UserDefaults.standard.set(false, forKey: "assistant.databaseLaunchInProgress")
+                            }
+                        }
                     Text(store.syncStatus).font(.caption)
-                    Text("Restart to apply a sync-mode change. Full CloudKit synchronization requires a valid Apple signing profile and CloudKit entitlement; an unsigned IPA alone cannot use iCloud. API keys are always device-local.")
+                    if UserDefaults.standard.bool(forKey: "assistant.cloudRecoveryMode") {
+                        Text("Recovery mode is active after an interrupted/failed iCloud database startup. Your local data is preserved.")
+                            .font(.footnote).foregroundColor(.orange)
+                        Button("Retry iCloud after next restart") {
+                            UserDefaults.standard.set(false, forKey: "assistant.cloudRecoveryMode")
+                            UserDefaults.standard.set(false, forKey: "assistant.databaseLaunchInProgress")
+                            cloudSyncEnabled = true
+                            testResult = "iCloud retry is armed. Close and reopen ASSistant."
+                        }
+                    }
+                    Text("Local storage is the safe default for unsigned or sideloaded builds. Enabling iCloud takes effect after restarting. CloudKit requires a valid signing profile, registered container and Apple account; keys remain local to each device.")
                         .font(.footnote).foregroundColor(.secondary)
                 }
                 Section("Context and memory") {
