@@ -6,26 +6,30 @@ struct RootView: View {
     var body: some View {
         TabView {
             ChatView()
-                .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
-            AgentsView()
-                .tabItem { Label("Agents", systemImage: "person.2") }
+                .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right.fill") }
+            TasksView()
+                .tabItem { Label("Tasks", systemImage: "checkmark.circle.fill") }
+            AppsView()
+                .tabItem { Label("Apps", systemImage: "square.grid.2x2.fill") }
             MemoryView()
                 .tabItem { Label("Memory", systemImage: "brain.head.profile") }
-            TasksView()
-                .tabItem { Label("Tasks", systemImage: "checkmark.circle") }
-            AppsView()
-                .tabItem { Label("Apps", systemImage: "square.grid.2x2") }
             SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape") }
+                .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }
-        .tint(.blue)
+        .tint(.cyan)
+        .toolbarBackground(.regularMaterial, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
         .overlay(alignment: .top) {
             if !store.database.ready {
-                Text(store.syncStatus)
-                    .font(.caption)
-                    .padding(8)
-                    .frame(maxWidth: .infinity)
-                    .background(.orange.opacity(0.18))
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text(store.syncStatus).font(.caption).lineLimit(2)
+                }
+                .padding(9)
+                .frame(maxWidth: .infinity)
+                .background(.orange.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 12)
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
     }
