@@ -26,10 +26,16 @@ enum AgentEngine {
     <assistant_tool>{"name":"browser_open","url":"https://www.example.com/product"}</assistant_tool>
     <assistant_tool>{"name":"browser_follow","linkID":"L4"}</assistant_tool>
     <assistant_tool>{"name":"browser_read"}</assistant_tool>
+    <assistant_tool>{"name":"browser_fill_search","linkID":"E2","text":"navy blue apron"}</assistant_tool>
+    <assistant_tool>{"name":"browser_submit_search","linkID":"E5"}</assistant_tool>
+    <assistant_tool>{"name":"browser_scroll"}</assistant_tool>
     browser_search: public search; site may be "amazon".
     browser_open: a PUBLIC HTTPS URL.
     browser_follow: one previously observed link ID from the CURRENT page snapshot.
     browser_read: refresh current page observation.
+    browser_fill_search: type into a search field E# only.
+    browser_submit_search: click a search button E# on supported sites.
+    browser_scroll: scroll down and read more products or page content.
     These read-only actions are automatic while enabled; they are audited.
     Do not use the browser to purchase, send messages, post, submit forms, change accounts,
     add items to carts, or bypass login/CAPTCHA. The user takes over for those actions.
@@ -124,6 +130,13 @@ enum AgentEngine {
                     observation = try await browser.followLink(tool.linkID ?? "")
                 case "browser_read":
                     observation = try await browser.read()
+                case "browser_fill_search":
+                    observation = try await browser.fillSearch(id: tool.linkID ?? "",
+                                                               text: tool.text ?? "")
+                case "browser_submit_search":
+                    observation = try await browser.submitSearch(id: tool.linkID ?? "")
+                case "browser_scroll":
+                    observation = try await browser.scrollDown()
                 default:
                     observation = "Unsupported browser command."
                 }
