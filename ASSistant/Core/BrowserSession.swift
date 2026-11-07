@@ -439,6 +439,19 @@ struct BrowserDock: View {
                     .frame(height: session.expanded ? 390 : 126)
                     .allowsHitTesting(session.expanded)
                     .clipped()
+                    .overlay {
+                        if !session.expanded {
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+                                        session.expanded = true
+                                        session.userControl = true
+                                    }
+                                }
+                                .accessibilityLabel("Expand and take control of live browser")
+                        }
+                    }
                     .overlay(alignment: .bottomLeading) {
                         if !session.expanded {
                             Text("Tap expand to take control")
