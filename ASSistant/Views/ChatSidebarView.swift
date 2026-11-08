@@ -123,7 +123,7 @@ struct ChatSidebarView: View {
                     .fontWeight(selectedChatID == chat.id ? .semibold : .medium)
                     .lineLimit(2)
                 if let last = store.messages(in: chat.id).last {
-                    Text(last.content.replacingOccurrences(of: "\\n", with: " "))
+                    Text(last.content.replacingOccurrences(of: "\n", with: " "))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
