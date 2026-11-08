@@ -176,4 +176,22 @@ final class ASSistantTests: XCTestCase {
             prompt: "Find me a navy blue apron on Amazon"))
     }
 
+    func testOAuthProviderConfiguration() {
+        XCTAssertEqual(ConnectedServiceKind.google.callbackScheme, "com.mekabrine.assistant")
+        XCTAssertEqual(ConnectedServiceKind.spotify.callbackScheme, "assistantspotify")
+        XCTAssertTrue(ConnectedServiceKind.google.scopes.contains("gmail.readonly"))
+        XCTAssertTrue(ConnectedServiceKind.google.scopes.contains("gmail.send"))
+        XCTAssertTrue(ConnectedServiceKind.spotify.scopes.contains("user-read-playback-state"))
+    }
+
+    func testRegisteredOAuthSchemesInAppBundle() {
+        let entries = Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes")
+            as? [[String: Any]] ?? []
+        let schemes = entries.flatMap { ($0["CFBundleURLSchemes"] as? [String]) ?? [] }
+        XCTAssertTrue(schemes.contains("com.mekabrine.assistant"),
+                      "Google auth callback scheme must be in generated Info.plist")
+        XCTAssertTrue(schemes.contains("assistantspotify"),
+                      "Spotify auth callback scheme must be in generated Info.plist")
+    }
+
 }
