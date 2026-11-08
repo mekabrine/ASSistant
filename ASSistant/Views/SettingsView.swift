@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var showAgents = false
     @State private var showAccounts = false
     @State private var showDeviceActions = false
+    @State private var confirmBrowserReset = false
     @State private var editingProvider: ProviderProfile?
     @State private var gistToken = ""
     @State private var publisherToken = ""
@@ -17,7 +18,7 @@ struct SettingsView: View {
     @State private var permissionResult = ""
     @AppStorage("publisherEndpoint") private var publisherEndpoint = ""
     @AppStorage("htmlUploadService") private var htmlUploadService = "paste"
-    @AppStorage("dictationEngine") private var dictationEngine = "whisper"
+    @AppStorage("dictationEngine") private var dictationEngine = "offline"
     @AppStorage("sttEndpoint") private var sttEndpoint = ""
     @AppStorage("sttModel") private var sttModel = "gpt-transcribe"
     @AppStorage("sttRequireKey") private var sttRequireKey = true
@@ -47,6 +48,16 @@ struct SettingsView: View {
                     }
                     Text("Choose custom agent instructions, model routing, and which native/web tools are enabled. Device writes always require approval.")
                         .font(.caption).foregroundStyle(.secondary)
+                }
+                Section("Browser privacy") {
+                    Label("Website sessions persist across chats", systemImage: "globe.americas.fill")
+                    Text("WebKit retains logins in ASSistant's own website data store. They are separate from Safari and from Google/Spotify OAuth tokens. An agent with web access can read visible page text from signed-in sites. Input values, passwords, cookies and security codes are not intentionally included in model context.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button(role: .destructive) {
+                        confirmBrowserReset = true
+                    } label: {
+                        Label("Erase all browser sign-ins and website data", systemImage: "trash")
+                    }
                 }
                 Section("AI providers") {
                     Button { createProvider = true } label: { Label("Add provider", systemImage: "plus") }
@@ -146,8 +157,8 @@ struct SettingsView: View {
                         }
                         Text("Leave URL blank to use the selected chat provider's /audio/transcriptions route. Example models: gpt-transcribe, whisper-1, whisper-large-v3-turbo. Use a compatible endpoint. Recorded audio is sent to your chosen provider only after you stop recording.")
                             .font(.footnote).foregroundColor(.secondary)
-                    } else {
-                        Text("Apple Speech recognition may not work on every device. Cloud Whisper does not depend on the Apple keyboard dictation service.")
+                    } else if dictationEngine == "apple" {
+                        Text("Apple Speech recognition may not work on every device. Cloud Whisper and local WhisperKit do not depend on the Apple keyboard dictation service.")
                             .font(.footnote).foregroundColor(.secondary)
                     }
                     Text("Call mode uses microphone → transcription → agent → spoken reply. It runs only while the app is open.")
@@ -226,6 +237,18 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .background(AmbientBackground())
             .navigationTitle("Settings")
+            .confirmationDialog("Erase saved browser sessions?", isPresented: $confirmBrowserReset,
+                                titleVisibility: .visible) {
+                Button("Erase saved website data", role: .destructive) {
+                    Task {
+                        await BrowserWorkspace.shared.clearBrowserLogins()
+                        testResult = "Website cookies and browser storage were cleared."
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This signs out websites in ASSistant's browser tabs, but does not revoke separate Google/Spotify OAuth connections.")
+            }
             .sheet(isPresented: $showAgents) {
                 AgentsView().environmentObject(store)
             }
