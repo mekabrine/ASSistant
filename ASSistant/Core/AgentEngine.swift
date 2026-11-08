@@ -124,6 +124,10 @@ enum AgentEngine {
                 "Requested local memory index (may be incomplete):\n" + preview))
         }
 
+        // Browsing is scoped to this conversation. A chat switch cancels
+        // the foreground request rather than letting it act on another tab set.
+        guard browser.currentChatID == chat.id else { throw CancellationError() }
+
         // Deterministic preflight: even a model that doesn't support function calling
         // receives real search results for an explicit shopping/research request.
         if enableWeb && shouldSearchImmediately(prompt) {
@@ -151,6 +155,7 @@ enum AgentEngine {
 
         for turn in 0..<(maxSteps + 1) {
             try Task.checkCancellation()
+            guard browser.currentChatID == chat.id else { throw CancellationError() }
             onStatus(turn == 0 ? "Thinking…" : "Reading findings…")
             let result = try await LLMService.request(profile: profile, messages: messages) { chunk in
                 onDelta(chunk)
@@ -243,6 +248,7 @@ enum AgentEngine {
                                      wantsHTMLApp: result.contains("[[BUILD_HTMLAPP]]") || wantsGeneratedApp(prompt),
                                      browserSteps: steps)
             }
+            guard browser.currentChatID == chat.id else { throw CancellationError() }
             guard enableWeb else {
                 return AgentResponse(text: "This agent's web tool is disabled.", pendingTool: nil,
                                      wantsHTMLApp: false, browserSteps: steps)
