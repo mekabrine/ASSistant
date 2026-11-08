@@ -336,7 +336,7 @@ struct BrowserDock: View {
 
                 BrowserDockContent(workspace: workspace, session: workspace.active)
                     .padding(10)
-                    .position(x: centerX, y: centerY)
+                    .contentShape(RoundedRectangle(cornerRadius: 20))
                     .gesture(
                         DragGesture(minimumDistance: 8)
                             .updating($drag) { value, state, _ in
@@ -358,6 +358,7 @@ struct BrowserDock: View {
                                 UIImpactFeedbackGenerator(style: .soft).impactOccurred()
                             }
                     )
+                    .position(x: centerX, y: centerY)
                     .accessibilityHint("Drag to move; tap to open. Position is saved for this chat.")
                     .transition(.opacity.combined(with: .scale(scale: 0.94)))
             }
