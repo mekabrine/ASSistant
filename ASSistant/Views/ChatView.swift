@@ -4,6 +4,7 @@ import PhotosUI
 import Vision
 import PDFKit
 import UIKit
+import MessageUI
 
 private struct BuildPrompt: Identifiable {
     let id = UUID()
@@ -38,6 +39,8 @@ struct ChatView: View {
     @State private var agentStatus = ""
     @State private var editingMessage: ChatMessage?
     @State private var showActivity = false
+    @State private var smsDraft: SMSDraft?
+    @State private var smsProposal: ProposedTool?
 
     private var current: ChatThread? { store.chats.first(where: { $0.id == chatID }) }
     private var currentMessages: [ChatMessage] {
@@ -175,6 +178,19 @@ struct ChatView: View {
             .sheet(isPresented: $showActivity) {
                 AgentActivityView().environmentObject(store)
             }
+            .sheet(item: $smsDraft) { draft in
+                MessageComposeSheet(draft: draft) { outcome in
+                    if let proposal = smsProposal {
+                        store.save(ToolAudit(tool: proposal.name, detail: draft.recipient,
+                                             approved: true, result: outcome))
+                        if let thread = current {
+                            _ = store.append(role: "assistant", text: outcome, to: thread)
+                        }
+                    }
+                    smsProposal = nil
+                    smsDraft = nil
+                }
+            }
             .sheet(isPresented: $showCallMode) {
                 if let id = chatID {
                     CallModeView(chatID: id) { transcript in
@@ -215,6 +231,20 @@ struct ChatView: View {
                 Button("Allow") {
                     Task {
                         do {
+                            if proposal.name == "compose_sms" {
+                                guard MFMessageComposeViewController.canSendText() else {
+                                    throw NativeActionError.messagesUnavailable
+                                }
+                                let number = try NativeActions.cleanPhone(proposal.recipient ?? "")
+                                let body = proposal.text ?? ""
+                                guard !body.isEmpty, body.count < 6000 else {
+                                    throw DeviceToolError.missingInput
+                                }
+                                smsProposal = proposal
+                                smsDraft = SMSDraft(recipient: number, message: body)
+                                pendingTool = nil
+                                return
+                            }
                             let result = try await ToolRouter.execute(proposal, store: store)
                             store.save(ToolAudit(tool: proposal.name, detail: proposal.title ?? proposal.text ?? "",
                                                  approved: true, result: result))
@@ -233,7 +263,7 @@ struct ChatView: View {
                     pendingTool = nil
                 }
             } message: { proposal in
-                Text("Allow \(proposal.name)\n\(proposal.title ?? proposal.text ?? proposal.details ?? "")\n\(proposal.at ?? "")")
+                Text("Approve: \(proposal.name.replacingOccurrences(of: "_", with: " "))\nRecipient: \(proposal.recipient ?? "not applicable")\nSubject/Title: \(proposal.subject ?? proposal.title ?? "")\n\(String((proposal.text ?? proposal.details ?? "").prefix(600)))\n\(proposal.at ?? "")")
             }
             .confirmationDialog("Build an HTMLApp?", isPresented: $showAppDecision, titleVisibility: .visible) {
                 Button("Generate, publish and open HTMLApp") {
@@ -541,6 +571,7 @@ struct ChatView: View {
                     profile: profile, input: context.messages,
                     prompt: userPrompt,
                     enableWeb: store.agent(for: thread).allowedTools.contains("web"),
+                    allowedToolCategories: store.agent(for: thread).allowedTools,
                     browser: browser,
                     onStatus: { status in
                         agentStatus = status
@@ -556,23 +587,13 @@ struct ChatView: View {
                 )
                 _ = store.append(role: "assistant", text: outcome.text, to: thread)
                 if let tool = outcome.pendingTool {
-                    let category: String
-                    switch tool.name {
-                    case "create_reminder": category = "reminder"
-                    case "create_calendar_event": category = "calendar"
-                    case "schedule_notification": category = "notification"
-                    case "get_location": category = "location"
-                    case "count_contacts": category = "contacts"
-                    case "copy_text": category = "clipboard"
-                    case "speak_text": category = "speak"
-                    default: category = "task"
-                    }
+                    let category = ToolRouter.category(for: tool.name)
                     if category == "task" || store.agent(for: thread).allowedTools.contains(category) {
                         pendingTool = tool
                         toolAlert = true
                     } else {
                         _ = store.append(role: "assistant", text:
-                            "This agent is not allowed to use the \(category) tool.", to: thread)
+                            "The \(category) tool is disabled for this agent. Enable it in Settings → Agents.", to: thread)
                     }
                 }
                 if outcome.wantsHTMLApp {
