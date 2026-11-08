@@ -117,14 +117,32 @@ struct ChatSidebarView: View {
         HStack(spacing: 9) {
             Image(systemName: pinned.contains(chat.id.uuidString) ? "pin.fill" : "bubble.left")
                 .foregroundStyle(pinned.contains(chat.id.uuidString) ? Color.cyan : Color.secondary)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(chat.title).lineLimit(2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(chat.title)
+                    .font(.subheadline)
+                    .fontWeight(selectedChatID == chat.id ? .semibold : .medium)
+                    .lineLimit(2)
+                if let last = store.messages(in: chat.id).last {
+                    Text(last.content.replacingOccurrences(of: "\\n", with: " "))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
                 Text(chat.updatedAt, style: .date)
-                    .font(.caption2).foregroundStyle(.secondary)
+                    .font(.caption2).foregroundStyle(.tertiary)
             }
             Spacer(minLength: 0)
+            if selectedChatID == chat.id {
+                Image(systemName: "circle.fill")
+                    .font(.system(size: 6))
+                    .foregroundStyle(.cyan)
+            }
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 7)
+        .background(selectedChatID == chat.id
+                    ? Color.cyan.opacity(0.11) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 11))
         .tag(chat.id)
         .contentShape(Rectangle())
         .onTapGesture {
