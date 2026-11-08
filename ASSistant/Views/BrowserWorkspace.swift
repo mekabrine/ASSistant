@@ -148,8 +148,10 @@ final class BrowserWorkspace: ObservableObject {
         } else { return }
 
         let tabs: [SavedBrowserTab] = live.tabs.compactMap { tab in
-            let url = tab.web.url?.absoluteString ?? tab.currentURL
-            guard let safe = BrowserStateStore.restorableURL(url) else { return nil }
+            let safeURL = BrowserStateStore.restorableURL(
+                tab.web.url?.absoluteString ?? ""
+            ) ?? BrowserStateStore.restorableURL(tab.currentURL)
+            guard let safe = safeURL else { return nil }
             let title = String(tab.title.prefix(180))
             let excerpt = tab.controls.contains(where: { $0.inputType == "password" })
                 || tab.requiresHuman ? "" : String(tab.pageText.prefix(1000))
