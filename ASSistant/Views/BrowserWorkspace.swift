@@ -127,6 +127,7 @@ final class BrowserWorkspace: ObservableObject {
     }
 }
 
+@MainActor
 struct BrowserDock: View {
     @ObservedObject var workspace: BrowserWorkspace
 
@@ -192,6 +193,7 @@ private struct BrowserDockContent: View {
     }
 }
 
+@MainActor
 struct BrowserFullScreenView: View {
     @ObservedObject var workspace: BrowserWorkspace
     @Environment(\.dismiss) private var dismiss
@@ -282,6 +284,7 @@ struct BrowserFullScreenView: View {
     }
 }
 
+@MainActor
 private struct BrowserPage: View {
     @ObservedObject var session: BrowserSession
     @ObservedObject var workspace: BrowserWorkspace
