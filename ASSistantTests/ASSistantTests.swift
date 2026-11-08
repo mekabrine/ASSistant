@@ -279,4 +279,58 @@ final class ASSistantTests: XCTestCase {
         XCTAssertLessThanOrEqual(phrase!.split(separator: " ").count, 8)
     }
 
+    func testMemoryDirectoryCategoriesRecencyAndExactID() {
+        let chat = ChatThread()
+        let agent = AgentProfile()
+        var recent = MemoryItem(text: "I like navy blue aprons", kind: "preference")
+        recent.category = "Preferences"
+        recent.title = "Navy blue apron preference"
+        var old = MemoryItem(text: "I used to prefer red aprons", kind: "preference")
+        old.category = "Preferences"
+        old.updatedAt = Date().addingTimeInterval(-70 * 86400)
+        var privateMemory = MemoryItem(text: "A secret password", kind: "fact")
+        privateMemory.isSensitive = true
+        let all = [recent, old, privateMemory]
+        let recentIndex = MemoryDirectory.list(all, chat: chat, agent: agent,
+                                               category: "Preferences", days: 30)
+        XCTAssertTrue(recentIndex.contains(recent.id.uuidString))
+        XCTAssertFalse(recentIndex.contains(old.id.uuidString))
+        XCTAssertFalse(recentIndex.contains(privateMemory.id.uuidString))
+        let full = MemoryDirectory.get(recent.id.uuidString, memories: all, chat: chat, agent: agent)
+        XCTAssertTrue(full.contains("navy blue aprons"))
+        XCTAssertFalse(MemoryDirectory.get(privateMemory.id.uuidString, memories: all,
+                                          chat: chat, agent: agent).contains("secret password"))
+    }
+
+    @MainActor
+    func testBrowserCAPTCHAFallbackDetector() {
+        XCTAssertTrue(BrowserSession.looksLikeChallenge(
+            "Our systems have detected unusual traffic from your computer network"))
+        XCTAssertTrue(BrowserSession.looksLikeChallenge("Please verify you are a human"))
+        XCTAssertFalse(BrowserSession.looksLikeChallenge(
+            "A store listing several navy blue aprons at different prices"))
+    }
+
+    func testChatMessageFormattingParts() {
+        let sample = "| Item | Price |\n| --- | --- |\n| Apron | $19 |\n\n" +
+            "Here is an example:\n" +
+            MessageFormatter.fence + "swift\nprint(123)\n" + MessageFormatter.fence
+        let parts = MessageFormatter.parse(sample)
+        XCTAssertGreaterThanOrEqual(parts.count, 2)
+        let choice = "<assistant_choices>{\"question\":\"Pick one\",\"options\":[\"A\",\"B\"]}</assistant_choices>"
+        XCTAssertEqual(MessageFormatter.parse(choice).count, 1)
+        XCTAssertTrue(MessageFormatter.allowedPreview("<div>Hello</div>"))
+        XCTAssertFalse(MessageFormatter.allowedPreview("<script>fetch('/token')</script>"))
+    }
+
+    @MainActor
+    func testTitleGenerationCadence() {
+        XCTAssertTrue(ChatTitleService.shouldRename(count: 1))
+        XCTAssertTrue(ChatTitleService.shouldRename(count: 5))
+        XCTAssertTrue(ChatTitleService.shouldRename(count: 10))
+        XCTAssertFalse(ChatTitleService.shouldRename(count: 7))
+        XCTAssertEqual(ChatTitleService.fallback("Find me a navy blue apron on Amazon"),
+                       "Find me a navy blue apron on")
+    }
+
 }
