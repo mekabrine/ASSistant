@@ -36,7 +36,7 @@ enum ToolRouter {
         "browser_search", "browser_open", "browser_read", "browser_follow",
         "browser_fill_search", "browser_submit_search", "browser_scroll",
         "browser_new", "browser_switch", "browser_tabs", "browser_request_handoff",
-        "memory_list", "memory_get", "memory_save", "memory_search", "memory_save",
+        "memory_list", "memory_get", "memory_save", "memory_search",
         "gmail_search", "gmail_read", "spotify_search", "spotify_now_playing",
         "spotify_playlists", "gmail_send",
         "spotify_play", "spotify_pause", "spotify_next", "spotify_previous",
@@ -54,17 +54,6 @@ enum ToolRouter {
         case "spotify_search", "spotify_now_playing", "spotify_playlists",
              "spotify_play", "spotify_pause", "spotify_next", "spotify_previous": return "spotify"
         case "memory_save", "memory_list", "memory_get", "memory_search": return "memory"
-        case "memory_save":
-            let text = (call.text ?? call.details ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            guard text.count >= 4, text.count <= 2000, !MemoryEngine.looksSensitive(text) else {
-                throw ConnectedServicesError.invalidInput("memory text is empty or contains a possible secret")
-            }
-            var item = MemoryItem(text: text, kind: "fact", scope: "global", importance: 0.65)
-            item.title = String((call.title ?? MemoryEngine.shortTitle(text)).prefix(90))
-            item.category = String((call.category ?? "Personal").prefix(50))
-            guard !MemoryEngine.containsSimilar(item, in: store.memories) else { return "A similar memory already exists." }
-            store.save(item)
-            return "Saved memory: \(item.title ?? "") (\(item.category ?? "Personal"))."
         case "run_shortcut": return "shortcuts"
         case "place_call": return "phone"
         case "compose_sms": return "sms"
@@ -137,8 +126,10 @@ enum ToolRouter {
             guard value.count >= 5, value.count <= 1200,
                   !MemoryEngine.looksSensitive(value) else { throw DeviceToolError.missingInput }
             let kind = MemoryCatalogue.category(call.category)
-            let item = MemoryItem(text: value, kind: kind, scope: "global",
+            var item = MemoryItem(text: value, kind: kind, scope: "global",
                                   importance: 0.75)
+            item.category = String((call.category ?? kind.capitalized).prefix(60))
+            item.title = String((call.title ?? MemoryEngine.shortTitle(value)).prefix(90))
             if !MemoryEngine.containsSimilar(item, in: store.memories) { store.save(item) }
             return "Saved \(kind) memory ID: \(item.id.uuidString)"
         case "create_task":
