@@ -394,6 +394,9 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         visible = false
         expanded = false
         returnControl()
+        // WKUserContentController retains message handlers; remove to avoid
+        // retaining a discarded web view and its authenticated page in memory.
+        web.configuration.userContentController.removeScriptMessageHandler(forName: "assistantUserInteraction")
     }
 
     static func needsHuman(_ observation: String) -> Bool {
