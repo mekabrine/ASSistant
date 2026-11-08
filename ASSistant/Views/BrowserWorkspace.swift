@@ -203,6 +203,32 @@ final class BrowserWorkspace: ObservableObject {
         if let chatID = currentChatID { scheduleSave(chatID) }
     }
 
+    func closeTab(_ id: UUID) {
+        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
+        let closing = sessions.remove(at: index)
+        closing.close()
+        closing.onPageUpdated = nil
+        observers[id] = nil
+        tabChat[id] = nil
+        if handoffBrowserID == id {
+            handoffBrowserID = nil
+            awaitingHuman = false
+        }
+        if sessions.isEmpty {
+            let replacement = BrowserSession()
+            sessions = [replacement]
+            if let chatID = currentChatID { attach(replacement, to: chatID) }
+        }
+        if selectedID == id { selectedID = sessions.first?.id }
+        if let chatID = currentChatID { persist(chatID) }
+    }
+
+    func closeCurrentChatTabs() {
+        let previousIDs = sessions.map(\.id)
+        for id in previousIDs { closeTab(id) }
+        fullScreen = false
+    }
+
     func open() {
         active.visible = true
         fullScreen = true
@@ -447,6 +473,13 @@ struct BrowserFullScreenView: View {
                                             in: Capsule())
                                 }
                                 .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        workspace.closeTab(session.id)
+                                    } label: {
+                                        Label("Close browser tab", systemImage: "xmark")
+                                    }
+                                }
                             }
                         }
                         .padding(.horizontal)
