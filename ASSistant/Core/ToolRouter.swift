@@ -36,7 +36,7 @@ enum ToolRouter {
         "browser_search", "browser_open", "browser_read", "browser_follow",
         "browser_fill_search", "browser_submit_search", "browser_scroll",
         "browser_new", "browser_switch", "browser_tabs", "browser_request_handoff",
-        "memory_list", "memory_get", "memory_search", "memory_save",
+        "memory_list", "memory_get", "memory_save", "memory_search", "memory_save",
         "gmail_search", "gmail_read", "spotify_search", "spotify_now_playing",
         "spotify_playlists", "gmail_send",
         "spotify_play", "spotify_pause", "spotify_next", "spotify_previous",
@@ -54,6 +54,17 @@ enum ToolRouter {
         case "spotify_search", "spotify_now_playing", "spotify_playlists",
              "spotify_play", "spotify_pause", "spotify_next", "spotify_previous": return "spotify"
         case "memory_save", "memory_list", "memory_get", "memory_search": return "memory"
+        case "memory_save":
+            let text = (call.text ?? call.details ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard text.count >= 4, text.count <= 2000, !MemoryEngine.looksSensitive(text) else {
+                throw ConnectedServicesError.invalidInput("memory text is empty or contains a possible secret")
+            }
+            var item = MemoryItem(text: text, kind: "fact", scope: "global", importance: 0.65)
+            item.title = String((call.title ?? MemoryEngine.shortTitle(text)).prefix(90))
+            item.category = String((call.category ?? "Personal").prefix(50))
+            guard !MemoryEngine.containsSimilar(item, in: store.memories) else { return "A similar memory already exists." }
+            store.save(item)
+            return "Saved memory: \(item.title ?? "") (\(item.category ?? "Personal"))."
         case "run_shortcut": return "shortcuts"
         case "place_call": return "phone"
         case "compose_sms": return "sms"
@@ -158,12 +169,13 @@ extension MemoryEngine {
     You are an actionable assistant, not a search-terms-only bot. Use real
     tools when available. Never claim a tool finished unless the OS/API confirmed it.
 
-    Native/external write actions require one explicit user approval.
+    Native/external write actions and memory saves require one explicit user approval.
     Propose exactly ONE action as JSON between <assistant_tool> tags:
     <assistant_tool>{"name":"run_shortcut","title":"My Shortcut Name","text":"optional input"}</assistant_tool>
     <assistant_tool>{"name":"place_call","recipient":"+15551234567"}</assistant_tool>
     <assistant_tool>{"name":"compose_sms","recipient":"+15551234567","text":"Hello"}</assistant_tool>
     <assistant_tool>{"name":"find_contacts","query":"Sam"}</assistant_tool>
+    <assistant_tool>{"name":"memory_save","title":"Preferred color","category":"Preferences","text":"I prefer navy blue workwear"}</assistant_tool>
     <assistant_tool>{"name":"gmail_send","recipient":"person@example.com","subject":"Hello","text":"Message body"}</assistant_tool>
     <assistant_tool>{"name":"spotify_play","uri":"spotify:track:TRACKID"}</assistant_tool>
     <assistant_tool>{"name":"spotify_pause"}</assistant_tool>
@@ -178,6 +190,9 @@ extension MemoryEngine {
     Only save facts the user actually provided; never infer sensitive traits, credentials,
     health, religion, political views, financial details or identity secrets.
 
+    Propose memory_save for a durable preference, personal fact, long-term goal,
+    project constraint or decision only when it is grounded in user statements.
+    Do not record passwords, verification codes, account secrets or sensitive traits.
     When the user asks to run a Shortcut, open the Shortcuts URL rather than
     giving only instructions. Shortcut names must match installed Shortcuts,
     and completion is NOT visible to ASSistant. You cannot list arbitrary
