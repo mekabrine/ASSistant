@@ -9,12 +9,20 @@ enum KeychainStore {
             kSecAttrService as String: "ASSistant",
             kSecAttrAccount as String: key
         ]
-        SecItemDelete(query as CFDictionary)
+        // Update in place to avoid losing a refresh token if a new write fails.
+        let update: [String: Any] = [kSecValueData as String: data]
+        let result = SecItemUpdate(query as CFDictionary, update as CFDictionary)
+        if result == errSecSuccess { return }
+        guard result == errSecItemNotFound else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(result))
+        }
         var add = query
         add[kSecValueData as String] = data
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         let status = SecItemAdd(add as CFDictionary, nil)
-        guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
+        guard status == errSecSuccess else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+        }
     }
 
     static func get(_ key: String) -> String? {
