@@ -171,6 +171,30 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         return "Human help required with live browser. " + lastFailure
     }
 
+    /// User-triggered address/search navigation. Never changes the handoff
+    /// flag or reads the resulting page into the model until the user
+    /// explicitly returns control.
+    func navigateAsUser(_ input: String) throws {
+        let typed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty else { throw BrowserFailure.badURL }
+        let url: URL?
+        if typed.hasPrefix("https://") {
+            url = Self.safeURL(typed)
+        } else if typed.contains(".") && !typed.contains(" ") {
+            url = Self.safeURL("https://" + typed)
+        } else {
+            var search = URLComponents(string: "https://www.google.com/search")!
+            search.queryItems = [URLQueryItem(name: "q", value: String(typed.prefix(220)))]
+            url = search.url
+        }
+        guard let target = url, Self.safeURL(target.absoluteString) != nil else {
+            throw BrowserFailure.badURL
+        }
+        userControl = true
+        status = "You are navigating"
+        guard web.load(URLRequest(url: target)) != nil else { throw BrowserFailure.unavailable }
+    }
+
     func navigate(_ raw: String) async throws -> String {
         guard !userControl else { throw BrowserFailure.userTookControl }
         guard let url = Self.safeURL(raw) else { throw BrowserFailure.badURL }
