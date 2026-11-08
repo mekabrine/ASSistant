@@ -191,11 +191,13 @@ enum AgentEngine {
                         term.isEmpty || $0.text.localizedCaseInsensitiveContains(term)
                     }
                     observation = MemoryDirectory.list(matches, chat: chat, agent: agent,
-                                                       days: days, limit: tool.limit ?? 50)
+                                                       days: days, limit: tool.limit ?? 50,
+                                                       offset: tool.offset ?? 0)
                 default:
                     observation = MemoryDirectory.list(memories, chat: chat, agent: agent,
                                                        category: tool.category, days: days,
-                                                       limit: tool.limit ?? 60)
+                                                       limit: tool.limit ?? 60,
+                                                       offset: tool.offset ?? 0)
                 }
                 steps += 1
                 onBrowserStep(tool.name, "Local memory lookup: \(tool.name).")
