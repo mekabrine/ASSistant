@@ -117,37 +117,63 @@ struct BrowserDock: View {
 
     var body: some View {
         if workspace.anyVisible && !workspace.fullScreen {
-            HStack(spacing: 10) {
-                Image(systemName: "globe.americas.fill")
-                    .font(.title2)
-                    .foregroundStyle(.cyan)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(workspace.active.title)
-                        .font(.caption).fontWeight(.semibold).lineLimit(1)
-                    Text(workspace.active.status)
-                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                    Text("\(workspace.sessions.count) browsers")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                Button {
-                    workspace.open()
-                } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.title3)
-                        .padding(8)
-                }
-                .accessibilityLabel("View browsers full screen")
-            }
-            .frame(maxWidth: 255)
-            .padding(12)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(.cyan.opacity(0.3)))
-            .shadow(radius: 12, y: 5)
-            .onTapGesture { workspace.open() }
-            .padding(12)
-            .transition(.move(edge: .trailing).combined(with: .opacity))
+            BrowserDockContent(workspace: workspace, session: workspace.active)
+                .padding(12)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
         }
+    }
+}
+
+private struct BrowserDockContent: View {
+    @ObservedObject var workspace: BrowserWorkspace
+    @ObservedObject var session: BrowserSession
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 9) {
+                Image(systemName: "globe.americas.fill")
+                    .foregroundStyle(.cyan)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.title).font(.caption).fontWeight(.semibold).lineLimit(1)
+                    Text(session.status).font(.caption2)
+                        .foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
+                if session.isLoading { ProgressView().controlSize(.mini) }
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.caption)
+            }
+            .padding(10)
+            if let screenshot = session.thumbnail {
+                Image(uiImage: screenshot)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 244, height: 120)
+                    .clipped()
+                    .overlay(alignment: .bottomLeading) {
+                        Text("\(workspace.sessions.count) browsers")
+                            .font(.caption2).padding(5)
+                            .background(.regularMaterial, in: Capsule())
+                            .padding(5)
+                    }
+            } else {
+                HStack {
+                    Image(systemName: "globe").font(.title2)
+                    Text("Live browser · \(workspace.sessions.count) tabs").font(.caption)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 70)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 244)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17))
+        .overlay(RoundedRectangle(cornerRadius: 17).stroke(.cyan.opacity(0.25)))
+        .shadow(radius: 12, y: 5)
+        .contentShape(RoundedRectangle(cornerRadius: 17))
+        .onTapGesture { workspace.open() }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Expand live browser: \(session.title)")
     }
 }
 
@@ -269,6 +295,9 @@ private struct BrowserPage: View {
         .onAppear { address = session.currentURL }
         .onChange(of: session.currentURL) { updated in
             if !editingAddress { address = updated }
+        }
+        .onChange(of: editingAddress) { isFocused in
+            if isFocused { session.userControl = true }
         }
     }
 
