@@ -108,7 +108,11 @@ struct RootView: View {
                 GeometryReader { geo in
                     HStack(spacing: 0) {
                         NavigationStack {
-                            ChatSidebarView(selectedChatID: $selectedChatID)
+                            ChatSidebarView(selectedChatID: $selectedChatID) {
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    phoneSidebarOpen = false
+                                }
+                            }
                                 .environmentObject(store)
                                 .toolbar {
                                     ToolbarItem(placement: .navigationBarLeading) {
