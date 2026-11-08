@@ -160,6 +160,7 @@ final class ConnectedServices: NSObject, ObservableObject, ASWebAuthenticationPr
             throw ConnectedServicesError.configureClient(kind.title)
         }
         guard authSession == nil else { throw ConnectedServicesError.invalidInput("sign-in already running") }
+        defer { authSession = nil }
         let verifier = Self.randomValue()
         let state = Self.randomValue()
         var url = URLComponents(string: kind.authorizeURL)!
@@ -201,11 +202,14 @@ final class ConnectedServices: NSObject, ObservableObject, ASWebAuthenticationPr
                 continuation.resume(throwing: ConnectedServicesError.authorizationCancelled)
             }
         }
-        authSession = nil
         let callbackParts = URLComponents(url: callback, resolvingAgainstBaseURL: false)
-        let fields = Dictionary(uniqueKeysWithValues: (callbackParts?.queryItems ?? []).map {
-            ($0.name, $0.value ?? "")
-        })
+        var fields: [String: String] = [:]
+        for item in callbackParts?.queryItems ?? [] {
+            // Reject duplicate state/code parameters instead of crashing
+            // from Dictionary(uniqueKeysWithValues:) on a malicious redirect.
+            guard fields[item.name] == nil else { throw ConnectedServicesError.mismatchedState }
+            fields[item.name] = item.value ?? ""
+        }
         guard callback.scheme?.lowercased() == kind.callbackScheme,
               fields["state"] == state else { throw ConnectedServicesError.mismatchedState }
         if let error = fields["error"] {
