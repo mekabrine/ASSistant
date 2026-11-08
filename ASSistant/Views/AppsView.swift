@@ -225,7 +225,7 @@ struct AppBuilderScreen: View {
     }
 }
 
-private struct HTMLPreview: UIViewRepresentable {
+struct HTMLPreview: UIViewRepresentable {
     let html: String
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
