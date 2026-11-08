@@ -25,6 +25,7 @@ struct ChatView: View {
         self.toggleSidebar = toggleSidebar
     }
     @State private var composer = ""
+    @State private var composerHeight: CGFloat = GrowingMessageInput.minimumHeight
     @State private var draftChatID: UUID?
     @State private var draftSaveTask: Task<Void, Never>?
     @State private var streaming = ""
@@ -451,9 +452,10 @@ struct ChatView: View {
                             .padding(.top, 11)
                             .allowsHitTesting(false)
                     }
-                    GrowingMessageInput(text: $composer, maximumHeight: 210)
-                        .frame(minHeight: 44, maxHeight: 210)
-                        .layoutPriority(1)
+                    GrowingMessageInput(text: $composer,
+                                        measuredHeight: $composerHeight,
+                                        maximumHeight: 176)
+                        .frame(height: composerHeight)
                 }
                 .background(Color.secondary.opacity(0.09),
                             in: RoundedRectangle(cornerRadius: 18, style: .continuous))
