@@ -36,6 +36,7 @@ enum ToolRouter {
         "browser_new", "browser_switch", "browser_request_handoff",
         "memory_list", "memory_get", "memory_search", "memory_save",
         "browser_new", "browser_switch", "browser_tabs", "browser_request_handoff",
+        "memory_list", "memory_get",
         "gmail_search", "gmail_read", "spotify_search", "spotify_now_playing",
         "spotify_playlists", "gmail_send",
         "spotify_play", "spotify_pause", "spotify_next", "spotify_previous",
@@ -52,6 +53,7 @@ enum ToolRouter {
         case "gmail_search", "gmail_read", "gmail_send": return "gmail"
         case "spotify_search", "spotify_now_playing", "spotify_playlists",
              "spotify_play", "spotify_pause", "spotify_next", "spotify_previous": return "spotify"
+        case "memory_list", "memory_get": return "memory"
         case "run_shortcut": return "shortcuts"
         case "place_call": return "phone"
         case "compose_sms": return "sms"
