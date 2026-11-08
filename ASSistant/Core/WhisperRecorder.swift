@@ -21,6 +21,9 @@ enum TranscriptionAPI {
     /// Standard OpenAI-compatible multipart transcription, usable with Groq,
     /// OpenAI, hosted Whisper services and many self-hosted implementations.
     static func transcribe(_ file: URL, profile: ProviderProfile?) async throws -> String {
+        if UserDefaults.standard.string(forKey: "dictationEngine") == "offline" {
+            return try await OfflineWhisperService.shared.transcribe(file)
+        }
         let configured = (UserDefaults.standard.string(forKey: "sttEndpoint") ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let endpoint: URL
