@@ -45,7 +45,7 @@ struct ChatView: View {
     @State private var autoBuildStatus = ""
     @State private var appBuildTask: Task<Void, Never>?
     @StateObject private var whisper = WhisperRecorder()
-    @AppStorage("dictationEngine") private var dictationEngine = "whisper"
+    @AppStorage("dictationEngine") private var dictationEngine = "offline"
     @State private var showCallMode = false
     @State private var agentStatus = ""
     @State private var editingMessage: ChatMessage?
