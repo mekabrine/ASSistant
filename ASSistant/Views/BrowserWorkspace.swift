@@ -28,6 +28,7 @@ final class BrowserWorkspace: ObservableObject {
     private var openChats: [UUID: LiveChat] = [:]
     private var observers: [UUID: AnyCancellable] = [:]
     private var tabChat: [UUID: UUID] = [:]
+    private var inactiveOrder: [UUID] = []
     private var delayedSave: [UUID: Task<Void, Never>] = [:]
 
     init() {
@@ -51,11 +52,28 @@ final class BrowserWorkspace: ObservableObject {
             openChats[previous] = LiveChat(tabs: sessions,
                                            selectedID: selectedID,
                                            dockX: dockX, dockY: dockY)
+            inactiveOrder.removeAll { $0 == previous }
+            inactiveOrder.append(previous)
         } else {
             for tab in sessions { tab.close() }
         }
 
         currentChatID = chatID
+        inactiveOrder.removeAll { $0 == chatID }
+        // Keep only a few inactive WKWebView sets alive. Other chats restore
+        // their saved URL/scroll state when reopened, avoiding web-process bloat.
+        while inactiveOrder.count > 3 {
+            let oldChat = inactiveOrder.removeFirst()
+            guard let old = openChats[oldChat] else { continue }
+            persist(oldChat)
+            for tab in old.tabs {
+                tab.close()
+                tab.onPageUpdated = nil
+                observers[tab.id] = nil
+                tabChat[tab.id] = nil
+            }
+            openChats[oldChat] = nil
+        }
         fullScreen = false
         awaitingHuman = false
         handoffBrowserID = nil
@@ -251,6 +269,7 @@ final class BrowserWorkspace: ObservableObject {
     func forgetChat(_ chatID: UUID) {
         delayedSave[chatID]?.cancel()
         delayedSave[chatID] = nil
+        inactiveOrder.removeAll { $0 == chatID }
         if let old = openChats.removeValue(forKey: chatID) {
             for tab in old.tabs {
                 tab.close()
@@ -274,6 +293,7 @@ final class BrowserWorkspace: ObservableObject {
         for live in openChats.values { live.tabs.forEach { $0.close() } }
         observers.removeAll()
         openChats.removeAll()
+        inactiveOrder.removeAll()
         tabChat.removeAll()
         for task in delayedSave.values { task.cancel() }
         delayedSave.removeAll()
@@ -306,7 +326,7 @@ struct BrowserDock: View {
                 let minX = min(width / 2, 136.0)
                 let minY = min(height / 2, 88.0)
                 let maxX = max(minX, width - minX)
-                let maxY = max(minY, height - 145.0)
+                let maxY = max(minY, height - 235.0)
                 let centerX = clamp(CGFloat(workspace.dockX) * width + drag.width,
                                     minX, maxX)
                 let centerY = clamp(CGFloat(workspace.dockY) * height + drag.height,
