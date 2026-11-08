@@ -100,15 +100,15 @@ enum GmailService {
         // Subject is encoded as an RFC 2047 UTF-8 encoded-word to avoid
         // accidentally interpreting non-ASCII text as a MIME header.
         let encodedSubject = "=?UTF-8?B?" + Data(subject.utf8).base64EncodedString() + "?="
-        let raw = """
-        MIME-Version: 1.0\r
-        To: \(to)\r
-        Subject: \(encodedSubject)\r
-        Content-Type: text/plain; charset=UTF-8\r
-        Content-Transfer-Encoding: base64\r
-        \r
-        \(Data(body.utf8).base64EncodedString())
-        """
+        let raw = [
+            "MIME-Version: 1.0",
+            "To: \(to)",
+            "Subject: \(encodedSubject)",
+            "Content-Type: text/plain; charset=UTF-8",
+            "Content-Transfer-Encoding: base64",
+            "",
+            Data(body.utf8).base64EncodedString()
+        ].joined(separator: "\r\n")
         let data = Data(raw.utf8).base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
