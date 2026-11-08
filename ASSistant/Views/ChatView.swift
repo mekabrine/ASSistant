@@ -32,7 +32,7 @@ struct ChatView: View {
     @State private var showAppDecision = false
     @State private var autoBuildStatus = ""
     @State private var appBuildTask: Task<Void, Never>?
-    @StateObject private var browser = BrowserSession()
+    @StateObject private var browser = BrowserWorkspace()
     @StateObject private var whisper = WhisperRecorder()
     @AppStorage("dictationEngine") private var dictationEngine = "whisper"
     @State private var showCallMode = false
@@ -127,7 +127,7 @@ struct ChatView: View {
             }
             .background(AmbientBackground())
             .overlay(alignment: .bottomTrailing) {
-                BrowserDock(session: browser)
+                BrowserDock(workspace: browser)
                     .padding(.bottom, 100)
             }
             .navigationTitle(current?.title ?? "ASSistant")
@@ -152,14 +152,10 @@ struct ChatView: View {
                     .accessibilityLabel("Start voice call mode")
                     Menu {
                         Button("Open live browser") {
-                            browser.visible = true
-                            browser.expanded = true
-                            browser.userControl = true
-                            if browser.currentURL.isEmpty {
+                            browser.open()
+                            if browser.active.currentURL.isEmpty {
                                 Task {
-                                    browser.userControl = false
-                                    _ = try? await browser.navigate("https://www.google.com")
-                                    browser.userControl = true
+                                    _ = try? await browser.active.navigate("https://www.google.com")
                                 }
                             }
                         }
@@ -174,6 +170,9 @@ struct ChatView: View {
                         Button("Stop speaking") { DeviceTools.shared.stopSpeaking() }
                     } label: { Image(systemName: "ellipsis.circle") }
                 }
+            }
+            .fullScreenCover(isPresented: $browser.fullScreen) {
+                BrowserFullScreenView(workspace: browser)
             }
             .sheet(isPresented: $showActivity) {
                 AgentActivityView().environmentObject(store)
@@ -355,7 +354,7 @@ struct ChatView: View {
                 Button {
                     if isLoading {
                         task?.cancel()
-                        browser.stop()
+                        browser.stopAll()
                     } else { send() }
                 } label: {
                     Image(systemName: isLoading ? "stop.circle.fill" : "arrow.up.circle.fill")
@@ -500,6 +499,7 @@ struct ChatView: View {
             return
         }
         errorText = ""
+        browser.resumeOnNextMessage()
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         let message = store.append(role: "user", text: text, to: thread)
         for candidate in MemoryEngine.candidates(from: text, messageID: message.id, chatID: thread.id) {
