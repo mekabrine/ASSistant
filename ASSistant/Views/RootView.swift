@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 struct RootView: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
