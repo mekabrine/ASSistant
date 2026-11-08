@@ -130,7 +130,10 @@ enum ToolRouter {
                                   importance: 0.75)
             item.category = String((call.category ?? kind.capitalized).prefix(60))
             item.title = String((call.title ?? MemoryEngine.shortTitle(value)).prefix(90))
-            if !MemoryEngine.containsSimilar(item, in: store.memories) { store.save(item) }
+            if MemoryEngine.containsSimilar(item, in: store.memories) {
+                return "A similar memory is already saved; nothing new was added."
+            }
+            store.save(item)
             return "Saved \(kind) memory ID: \(item.id.uuidString)"
         case "create_task":
             let title = call.title ?? ""
