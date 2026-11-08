@@ -37,8 +37,8 @@ The Spotify Web API does **not** grant arbitrary access to your account, and the
 Open **Settings → Phone, Messages, Shortcuts & Contacts** to test actions manually. Chat AI tool actions have separate approval prompts and visible audit logs.
 
 - **Run a Shortcut:** Enter its **exact existing Shortcuts name**, optionally text input. ASSistant opens `shortcuts://run-shortcut?name=<encoded>`; this is an iOS handoff, not evidence that every action completed. Apps cannot list every personal Shortcut through this URL mechanism.
-- **Phone:** Enter a validated number. ASSistant opens a `tel:` URL. The operating system and user manage actual call initiation; there is no background call-placement API for arbitrary third-party apps.
-- **SMS/iMessage:** ASSistant presents Apple's `MFMessageComposeViewController` with the recipient and proposed text, and the user must tap **Send**. The app records whether the composer was sent/cancelled/failed, but not carrier delivery.
+- **Phone:** Enter a validated number or a unique contact name. With permission, ASSistant resolves the contact's number and opens a `tel:` URL. If multiple matching numbers exist, it refuses to guess. The operating system and user manage actual call initiation; there is no background call-placement API for arbitrary third-party apps.
+- **SMS/iMessage:** ASSistant can resolve a unique contact name after consent, then presents Apple's `MFMessageComposeViewController` with the recipient and proposed text, and the user must tap **Send**. The app records whether the composer was sent/cancelled/failed, but not carrier delivery.
 - **Contacts:** A lookup requests iOS Contacts permission and returns up to six matching contacts with numbers. The agent must ask permission before reading private contacts.
 
 Account tools cannot bypass the system permission model, auto-send text messages, or silently initiate phone calls. Device calls require the user to approve the agent's proposal. Never use untrusted webpage text to authorize a send/call.
