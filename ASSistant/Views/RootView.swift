@@ -3,7 +3,7 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @StateObject private var browsers = BrowserWorkspace()
+    @StateObject private var browsers = BrowserWorkspace.shared
     @State private var selectedChatID: UUID?
     @State private var chatSidebar: NavigationSplitViewVisibility = .all
 
