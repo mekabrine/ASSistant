@@ -362,6 +362,7 @@ final class ASSistantTests: XCTestCase {
         XCTAssertNil(BrowserSession.safeURL("http://localhost/password"))
     }
 
+    @MainActor
     func testChatTitleScheduleAndAppIntent() {
         XCTAssertTrue(ChatTitleService.shouldRename(count: 1))
         XCTAssertTrue(ChatTitleService.shouldRename(count: 5))
