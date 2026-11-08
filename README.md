@@ -16,6 +16,21 @@ Native SwiftUI assistant integrating user-configured AI APIs, private local-firs
 
 See [docs/WEB_VOICE_HTMLAPP.md](docs/WEB_VOICE_HTMLAPP.md) for setup, safety constraints and the manual QA checklist. **These code changes have not passed a fresh Xcode compilation or real-device test.** The prior successful IPA build predates them.
 
+## Connected accounts and native actions (November 8)
+
+- **Google / Gmail:** OAuth 2.0 PKCE sign-in with user-configured iOS OAuth client ID, device-local Keychain token storage and refresh, Gmail mailbox search, message reading, and sending after explicit approval. Gmail read permissions are restricted by Google and may require developer verification.
+- **Spotify:** OAuth PKCE with the user's Spotify developer app client ID; identity, music search, playlists and current playback information. Approved playback actions support play/pause/next/previous, subject to account/device restrictions and Spotify Premium.
+- **iOS Shortcuts:** Launch a named installed Shortcut via the system Shortcuts URL interface, with optional text input. This cannot enumerate all private Shortcuts or guarantee completion.
+- **Phone:** Approved call requests open iOS Phone via a validated `tel:` URL. ASSistant does not secretly dial calls.
+- **SMS / iMessage:** Prepare an Apple Messages compose screen with a recipient and body; the user presses Send. The result of the system composer is recorded, not carrier delivery.
+- **Contacts:** Explicit permission-based local name/phone lookup.
+- **Agent account permissions:** Per-agent Gmail and Spotify read access toggles, bounded read-only account tools, and approval-gated writes. Private email content is not placed into browser search queries or persistent audit logs.
+- **UI:** Connected Accounts and Device Actions screens under Settings.
+
+Google and Spotify require app registration and OAuth client IDs to work; the source cannot provide an unrelated developer's OAuth credentials. See [Connected accounts setup and QA](docs/CONNECTED_ACCOUNTS.md).
+
+**Status:** These additions are committed but not yet Xcode-built or device-tested. The existing manual-only workflow has not been triggered by these commits.
+
 ## What's implemented in source
 
 - **iOS 16.0** minimum; SwiftUI tabs for Chat, Agents, Memory, Tasks, Apps and Settings.
