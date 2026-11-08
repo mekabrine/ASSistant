@@ -59,6 +59,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published var status = "Ready"
     @Published var lastError = ""
     @Published var progress: Double = 0
+    @Published var thumbnail: UIImage?
 
     private var pending: CheckedContinuation<Void, Error>?
     private var navigationSequence = 0
@@ -391,6 +392,14 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         isLoading = false
     }
 
+    func captureThumbnail() {
+        web.takeSnapshot(with: nil) { [weak self] image, _ in
+            Task { @MainActor in
+                self?.thumbnail = image
+            }
+        }
+    }
+
     func goBack() {
         if web.canGoBack { web.goBack() }
     }
@@ -409,6 +418,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        captureThumbnail()
         isLoading = false
         progress = 1
         currentURL = webView.url?.absoluteString ?? currentURL
