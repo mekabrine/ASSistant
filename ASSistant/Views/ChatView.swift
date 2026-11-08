@@ -874,6 +874,7 @@ private struct ChatGroup: Identifiable {
     let chats: [ChatThread]
 }
 
+@MainActor
 private struct ChatPicker: View {
     @EnvironmentObject var store: AppStore
     @Environment(\.dismiss) private var dismiss
