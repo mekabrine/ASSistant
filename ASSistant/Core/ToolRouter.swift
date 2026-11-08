@@ -15,12 +15,16 @@ struct ProposedTool: Codable, Identifiable {
     var subject: String?
     var query: String?
     var uri: String?
+    var category: String?
+    var period: String?
+    var memoryID: String?
+    var limit: Int?
     var browserID: String?
     var category: String?
     var memoryID: String?
     var days: Int?
 
-    enum CodingKeys: String, CodingKey { case name, title, details, text, at, end, url, linkID, site, recipient, subject, query, uri, browserID, category, memoryID, days }
+    enum CodingKeys: String, CodingKey { case name, title, details, text, at, end, url, linkID, site, recipient, subject, query, uri, category, period, memoryID, limit, browserID, category, memoryID, days }
 }
 
 enum ToolRouter {
@@ -29,6 +33,8 @@ enum ToolRouter {
         "get_location", "count_contacts", "copy_text", "speak_text", "create_task",
         "browser_search", "browser_open", "browser_read", "browser_follow",
         "browser_fill_search", "browser_submit_search", "browser_scroll",
+        "browser_new", "browser_switch", "browser_request_handoff",
+        "memory_list", "memory_get", "memory_search", "memory_save",
         "browser_new", "browser_switch", "browser_tabs", "browser_request_handoff",
         "gmail_search", "gmail_read", "spotify_search", "spotify_now_playing",
         "spotify_playlists", "gmail_send",
@@ -50,6 +56,7 @@ enum ToolRouter {
         case "place_call": return "phone"
         case "compose_sms": return "sms"
         case "find_contacts", "count_contacts": return "contacts"
+        case "memory_save", "memory_list", "memory_get", "memory_search": return "memory"
         case "create_reminder": return "reminder"
         case "create_calendar_event": return "calendar"
         case "schedule_notification": return "notification"
@@ -113,6 +120,15 @@ enum ToolRouter {
         case "speak_text":
             tools.speak(call.text ?? "")
             return "Started speaking the requested text."
+        case "memory_save":
+            let value = (call.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard value.count >= 5, value.count <= 1200,
+                  !MemoryEngine.looksSensitive(value) else { throw DeviceToolError.missingInput }
+            let kind = MemoryCatalogue.category(call.category)
+            let item = MemoryItem(text: value, kind: kind, scope: "global",
+                                  importance: 0.75)
+            if !MemoryEngine.containsSimilar(item, in: store.memories) { store.save(item) }
+            return "Saved \(kind) memory ID: \(item.id.uuidString)"
         case "create_task":
             let title = call.title ?? ""
             guard !title.isEmpty else { throw DeviceToolError.missingInput }
@@ -154,6 +170,12 @@ extension MemoryEngine {
     Other native actions: create_reminder, create_calendar_event,
     schedule_notification, get_location, count_contacts, copy_text,
     speak_text, create_task.
+
+    Memory tools: memory_list, memory_get, memory_search are automatic read-only.
+    For saving a new long-term memory, propose:
+    <assistant_tool>{"name":"memory_save","category":"preference","text":"User likes navy blue clothing."}</assistant_tool>
+    Only save facts the user actually provided; never infer sensitive traits, credentials,
+    health, religion, political views, financial details or identity secrets.
 
     When the user asks to run a Shortcut, open the Shortcuts URL rather than
     giving only instructions. Shortcut names must match installed Shortcuts,
