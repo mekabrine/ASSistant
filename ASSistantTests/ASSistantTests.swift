@@ -145,4 +145,24 @@ final class ASSistantTests: XCTestCase {
                        "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
     }
 
+    func testConnectedToolPayloadDecoding() {
+        let gmail = ToolRouter.extract(from:
+            #"<assistant_tool>{"name":"gmail_search","query":"is:unread newer_than:2d"}</assistant_tool>"#)
+        XCTAssertEqual(gmail?.query, "is:unread newer_than:2d")
+        let message = ToolRouter.extract(from:
+            #"<assistant_tool>{"name":"compose_sms","recipient":"+19995550101","text":"Hello"}</assistant_tool>"#)
+        XCTAssertEqual(message?.name, "compose_sms")
+        XCTAssertEqual(message?.recipient, "+19995550101")
+        let shortcut = ToolRouter.extract(from:
+            #"<assistant_tool>{"name":"run_shortcut","title":"Start Work"}</assistant_tool>"#)
+        XCTAssertEqual(shortcut?.title, "Start Work")
+    }
+
+    @MainActor
+    func testCallDestinationInputValidation() {
+        XCTAssertEqual(try NativeActions.cleanPhone("+1 (999) 555-0101"), "+19995550101")
+        XCTAssertThrowsError(try NativeActions.cleanPhone("not a phone number"))
+        XCTAssertThrowsError(try NativeActions.cleanPhone("123"))
+    }
+
 }
