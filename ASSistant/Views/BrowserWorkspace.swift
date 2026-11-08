@@ -6,6 +6,7 @@ import WebKit
 /// logins remain available across chats. They never borrow Safari cookies.
 @MainActor
 final class BrowserWorkspace: ObservableObject {
+    static let shared = BrowserWorkspace()
     @Published private(set) var sessions: [BrowserSession] = [BrowserSession()]
     @Published var selectedID: UUID?
     @Published var fullScreen = false
