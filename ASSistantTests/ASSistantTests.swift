@@ -333,4 +333,49 @@ final class ASSistantTests: XCTestCase {
                        "Find me a navy blue apron on")
     }
 
+    func testMemoryDirectoryCategoriesPeriodAndID() {
+        let chat = ChatThread()
+        let agent = AgentProfile()
+        var pref = MemoryItem(text: "I prefer dark blue aprons", kind: "preference")
+        pref.title = "Work apron colors"
+        pref.category = "Preferences"
+        var privateMemory = MemoryItem(text: "I prefer not to share this", kind: "preference")
+        privateMemory.isSensitive = true
+        let directory = MemoryDirectory.list([pref, privateMemory], chat: chat, agent: agent,
+                                             category: "Preferences", days: 30)
+        XCTAssertTrue(directory.contains("Work apron colors"))
+        XCTAssertTrue(directory.contains(pref.id.uuidString))
+        XCTAssertFalse(directory.contains(privateMemory.id.uuidString))
+        let full = MemoryDirectory.get(pref.id.uuidString, memories: [pref],
+                                       chat: chat, agent: agent)
+        XCTAssertTrue(full.contains("dark blue aprons"))
+        XCTAssertFalse(MemoryDirectory.get(privateMemory.id.uuidString,
+                                          memories: [privateMemory], chat: chat, agent: agent)
+            .contains("prefer not to share"))
+    }
+
+    @MainActor
+    func testBrowserVerificationDetectionAndSearchSafety() {
+        XCTAssertTrue(BrowserSession.needsHuman("Please enter the verification code"))
+        XCTAssertTrue(BrowserSession.looksLikeChallenge("verify you are human"))
+        XCTAssertFalse(BrowserSession.needsHuman("Compare two blue aprons"))
+        XCTAssertNil(BrowserSession.safeURL("http://localhost/password"))
+    }
+
+    func testChatTitleScheduleAndAppIntent() {
+        XCTAssertTrue(ChatTitleService.shouldRename(count: 1))
+        XCTAssertTrue(ChatTitleService.shouldRename(count: 5))
+        XCTAssertTrue(ChatTitleService.shouldRename(count: 10))
+        XCTAssertFalse(ChatTitleService.shouldRename(count: 7))
+    }
+
+    func testRichContentSupportsTablesChoicesAndCodeBlocks() {
+        let table = "| Item | Color |\n| --- | --- |\n| Apron | Navy |"
+        XCTAssertEqual(MessageFormatter.parse(table).count, 1)
+        let choices = #"<assistant_choices>{"question":"Choose a color","options":["Navy","Black"]}</assistant_choices>"#
+        XCTAssertEqual(MessageFormatter.parse(choices).count, 1)
+        XCTAssertFalse(MessageFormatter.allowedPreview("<script>alert(1)</script>"))
+        XCTAssertTrue(MessageFormatter.allowedPreview("<div>Ready</div>"))
+    }
+
 }
