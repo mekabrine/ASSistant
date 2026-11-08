@@ -23,6 +23,8 @@ struct SettingsView: View {
     @AppStorage("sttRequireKey") private var sttRequireKey = true
     @AppStorage("cloudSyncEnabled") private var cloudSyncEnabled = false
     @AppStorage("autoSummaryEnabled") private var autoSummaryEnabled = true
+    @AppStorage("chatTitleProviderID") private var chatTitleProviderID = ""
+    @AppStorage("chatTitleModel") private var chatTitleModel = ""
 
     var body: some View {
         NavigationStack {
@@ -91,6 +93,19 @@ struct SettingsView: View {
                     }
                     Text("Local storage is the safe default for unsigned or sideloaded builds. Enabling iCloud takes effect after restarting. CloudKit requires a valid signing profile, registered container and Apple account; keys remain local to each device.")
                         .font(.footnote).foregroundColor(.secondary)
+                }
+                Section("Automatic chat names") {
+                    Picker("Title-generation provider", selection: $chatTitleProviderID) {
+                        Text("Current chat provider").tag("")
+                        ForEach(store.providers) { provider in
+                            Text(provider.name).tag(provider.id.uuidString)
+                        }
+                    }
+                    TextField("Small model ID (optional)", text: $chatTitleModel)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled(true)
+                    Text("Names are refreshed when a chat begins and approximately every five messages, using up to the last 50 turns. Pick a cheap/small model supported by your provider; title generation makes additional API requests.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Context and memory") {
                     Toggle("Auto-summarize longer chats (extra AI calls)", isOn: $autoSummaryEnabled)
