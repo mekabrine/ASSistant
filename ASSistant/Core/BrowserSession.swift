@@ -25,6 +25,18 @@ enum BrowserFailure: LocalizedError {
     }
 }
 
+private final class WeakBrowserScriptHandler: NSObject, WKScriptMessageHandler {
+    weak var delegate: (any WKScriptMessageHandler)?
+
+    init(delegate: any WKScriptMessageHandler) {
+        self.delegate = delegate
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        delegate?.userContentController(controller, didReceive: message)
+    }
+}
+
 /// One shared, real WKWebView for human and agent use.
 /// Unlike the uploaded desktop Python/Playwright script, this runs on iOS 16.
 /// It exposes bounded page text and clickable links, not unrestricted JS execution.
@@ -61,8 +73,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         super.init()
         web.navigationDelegate = self
         web.uiDelegate = self
-        config.userContentController.add(self, name: "assistantUserInteraction")
-        config.userContentController.addUserScript(WKUserScript(source: """
+        web.configuration.userContentController.add(WeakBrowserScriptHandler(delegate: self), name: "assistantUserInteraction")
+        web.configuration.userContentController.addUserScript(WKUserScript(source: """
         document.addEventListener('click',function(e){
           if(window.__assistantAutomation)return;
           const interactive=e.target.closest('a,button,input,textarea,select,[role="button"],[contenteditable="true"]');
