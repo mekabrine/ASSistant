@@ -135,23 +135,44 @@ enum MemoryEngine {
         ))
     }
 
-    // Cheap, explicit facts first. Don't infer or automatically capture sensitive traits.
+    // Extract only clear first-person, durable user facts, not speculative
+    // inferences from an assistant reply or sensitive personal information.
     static func candidates(from userText: String, messageID: UUID, chatID: UUID) -> [MemoryItem] {
         let value = userText.trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = value.lowercased()
-        guard value.count >= 12, value.count < 600 else { return [] }
+        guard value.count >= 9, value.count <= 1300, !looksSensitive(value) else { return [] }
         let patterns: [(String, String, String)] = [
             ("remember that ", "fact", "global"),
             ("remember: ", "fact", "global"),
             ("i prefer ", "preference", "global"),
+            ("i like ", "preference", "global"),
+            ("i love ", "preference", "global"),
+            ("i dislike ", "preference", "global"),
+            ("i don't like ", "preference", "global"),
+            ("my favorite ", "preference", "global"),
+            ("my favourite ", "preference", "global"),
+            ("my preference is ", "preference", "global"),
+            ("my goal is ", "goal", "global"),
+            ("i am learning ", "goal", "global"),
+            ("i usually ", "routine", "global"),
+            ("i always ", "routine", "global"),
+            ("i work as ", "work", "global"),
+            ("i work on ", "project", "global"),
+            ("i use ", "technology", "global"),
+            ("i collect ", "hobby", "global"),
+            ("my hobby is ", "hobby", "global"),
+            ("my style is ", "style", "global"),
             ("my project ", "project", "chat:\(chatID.uuidString)"),
             ("for this project ", "project", "chat:\(chatID.uuidString)")
         ]
         guard let match = patterns.first(where: { lower.hasPrefix($0.0) }) else { return [] }
-        let extracted = String(value.dropFirst(match.0.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !extracted.isEmpty, !looksSensitive(extracted) else { return [] }
-        return [MemoryItem(text: extracted, kind: match.1, scope: match.2,
-                           sourceMessageID: messageID, importance: 0.7)]
+        let remainder = value.dropFirst(match.0.count)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard remainder.count >= 3, !looksSensitive(remainder) else { return [] }
+        let text = match.0 + remainder
+        return [MemoryItem(text: String(text.prefix(900)), kind: match.1,
+                           scope: match.2, sourceMessageID: messageID,
+                           importance: match.1 == "preference" ? 0.78 : 0.68)]
     }
 
     static func containsSimilar(_ item: MemoryItem, in items: [MemoryItem]) -> Bool {
@@ -168,8 +189,12 @@ enum MemoryEngine {
 
     static func looksSensitive(_ text: String) -> Bool {
         let t = text.lowercased()
-        return ["password", "social security", "credit card", "api key", "private key",
-                "medical diagnosis", "bank account", "routing number"].contains(where: t.contains)
+        return ["password", "passcode", "one-time code", "verification code",
+                "social security", "credit card", "api key", "private key",
+                "medical diagnosis", "bank account", "routing number",
+                "passport number", "access token", "secret key", "my diagnosis",
+                "my religion", "my ethnicity", "my sexual orientation",
+                "my political party", "my ssn"].contains(where: t.contains)
     }
 
     static func shouldSummarize(_ messages: [ChatMessage], existing: [SessionSummary]) -> Bool {
