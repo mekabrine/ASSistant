@@ -235,7 +235,7 @@ struct ChatView: View {
                                 guard MFMessageComposeViewController.canSendText() else {
                                     throw NativeActionError.messagesUnavailable
                                 }
-                                let number = try NativeActions.cleanPhone(proposal.recipient ?? "")
+                                let number = try await NativeActions.resolvePhone(proposal.recipient ?? "")
                                 let body = proposal.text ?? ""
                                 guard !body.isEmpty, body.count < 6000 else {
                                     throw DeviceToolError.missingInput
