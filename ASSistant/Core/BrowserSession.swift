@@ -30,7 +30,11 @@ enum BrowserFailure: LocalizedError {
 /// It exposes bounded page text and clickable links, not unrestricted JS execution.
 @MainActor
 final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+    let id = UUID()
     let web: WKWebView
+    @Published var waitingForHuman = false
+    @Published var handoffReason = ""
+    private var handoffWaiter: CheckedContinuation<Void, Error>?
     let id = UUID()
     @Published var requiresHuman = false
     @Published var handoffReason = ""
@@ -59,6 +63,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         web = WKWebView(frame: .zero, configuration: config)
         super.init()
+        web.configuration.userContentController.add(self, name: "assistantUserAction")
         web.navigationDelegate = self
         web.uiDelegate = self
         config.userContentController.add(self, name: "assistantUserInteraction")
@@ -120,29 +125,36 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         let domain = (site ?? "").lowercased()
         let specificSite = domain == "amazon" || domain == "amazon.com" ? "site:amazon.com " : ""
         let terms = specificSite + trimmed
-        var parts = URLComponents(string: "https://www.google.com/search")!
-        parts.queryItems = [URLQueryItem(name: "q", value: terms)]
-        guard let url = parts.url else { throw BrowserFailure.badURL }
-        do {
-            let observation = try await navigate(url.absoluteString)
-            let lower = observation.lowercased()
-            if lower.contains("unusual traffic") ||
-                lower.contains("verify you are a human") ||
-                lower.contains("before you continue to google") ||
-                lower.contains("our systems have detected unusual") {
-                status = "Trying alternative search…"
-                var backup = URLComponents(string: "https://www.bing.com/search")!
-                backup.queryItems = [URLQueryItem(name: "q", value: terms)]
-                guard let fallbackURL = backup.url else { return observation }
-                return try await navigate(fallbackURL.absoluteString)
+        var failures: [String] = []
+        let engines: [(String, String)] = [
+            ("https://www.google.com/search", "q"),
+            ("https://www.bing.com/search", "q"),
+            ("https://duckduckgo.com/", "q")
+        ]
+        for (endpoint, key) in engines {
+            try Task.checkCancellation()
+            var components = URLComponents(string: endpoint)!
+            components.queryItems = [URLQueryItem(name: key, value: terms)]
+            guard let url = components.url else { continue }
+            do {
+                let observation = try await navigate(url.absoluteString)
+                let lower = observation.lowercased()
+                let blocked = [
+                    "unusual traffic", "verify you are human",
+                    "captcha", "robot check", "before you continue to google",
+                    "automated queries", "challenge-platform"
+                ].contains(where: lower.contains)
+                if blocked {
+                    failures.append((url.host ?? "") + " requested verification")
+                    continue
+                }
+                return observation
+            } catch {
+                failures.append((url.host ?? "") + ": " + error.localizedDescription)
             }
-            return observation
-        } catch {
-            var backup = URLComponents(string: "https://www.bing.com/search")!
-            backup.queryItems = [URLQueryItem(name: "q", value: terms)]
-            guard let fallbackURL = backup.url else { throw error }
-            return try await navigate(fallbackURL.absoluteString)
         }
+        // Do not invent results if all providers challenge or fail.
+        throw BrowserFailure.unavailable
     }
 
     func navigate(_ raw: String) async throws -> String {
@@ -319,9 +331,55 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func close() {
         stop()
+        if let waiter = handoffWaiter {
+            handoffWaiter = nil
+            waiter.resume(throwing: CancellationError())
+        }
+        waitingForHuman = false
         visible = false
         expanded = false
         userControl = true
+    }
+
+    func returnToAgent() {
+        userControl = false
+        waitingForHuman = false
+        handoffReason = ""
+        status = "AI has control"
+        if let waiter = handoffWaiter {
+            handoffWaiter = nil
+            waiter.resume()
+        }
+    }
+
+    func requestHuman(reason: String) async throws {
+        waitingForHuman = true
+        handoffReason = String(reason.prefix(400))
+        userControl = true
+        visible = true
+        status = "Waiting for human verification"
+        try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
+            handoffWaiter = c
+        }
+    }
+
+    static func needsHuman(_ observation: String) -> Bool {
+        let lower = observation.lowercased()
+        return ["verify you are human", "verify that you are human",
+                "complete the captcha", "solve the captcha",
+                "enter the security code", "two-factor authentication",
+                "enter the verification code", "confirm your identity",
+                "sign in to continue", "log in to continue",
+                "unusual traffic from your computer network"].contains(where: lower.contains)
+    }
+
+    func userContentController(_ userContentController: WKUserContentController,
+                               didReceive message: WKScriptMessage) {
+        guard message.name == "assistantUserAction",
+              let action = message.body as? String,
+              action == "click" || action == "input" else { return }
+        userControl = true
+        status = "You are controlling this tab"
     }
 
     func stop() {
@@ -402,6 +460,10 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
         if url.scheme == "about" { decisionHandler(.allow); return }
+        if navigationAction.navigationType == .linkActivated {
+            userControl = true
+            status = "You are controlling this tab"
+        }
         decisionHandler(Self.safeURL(url.absoluteString) != nil ? .allow : .cancel)
     }
 }
