@@ -55,6 +55,14 @@ enum AgentEngine {
     Keep source URLs in answers. If an item isn't verified, say so.
     """
 
+    static func wantsGeneratedApp(_ prompt: String) -> Bool {
+        let q = prompt.lowercased()
+        let subjects = ["html app", "htmlapp", "mini app", "web app",
+                        "interactive app", "make an app", "build an app",
+                        "create an app", "generate an app"]
+        return subjects.contains(where: q.contains)
+    }
+
     static func shouldSearchImmediately(_ prompt: String) -> Bool {
         let q = prompt.lowercased()
         // Never send a potentially private, local-account question to a public
@@ -101,8 +109,22 @@ enum AgentEngine {
                 (category == "spotify" && ConnectedServices.shared.spotifyConnected)
         }
         messages[0].content += "\n" + AccountAgentTools.instructions(allowedTools: enabledAccounts)
+        messages[0].content += "\n" + MemoryCatalogue.instructions
         messages[0].content += "\n" + MemoryDirectory.instructions
         var steps = 0
+        let normalized = prompt.lowercased()
+        if ["what do you remember", "list my memories", "show my memories",
+            "all my memories", "saved memories"].contains(where: normalized.contains) {
+            let period = ["last month", "past month", "recent month"].contains(where: normalized.contains)
+                ? "month" : "all"
+            let category = MemoryCatalogue.categories.first(where: {
+                normalized.contains($0)
+            })
+            let preview = MemoryCatalogue.list(store.memories, category: category,
+                                               period: period, limit: 35)
+            messages.append(LLMMessage(role: "user", content:
+                "Requested local memory index (may be incomplete):\n" + preview))
+        }
 
         // Deterministic preflight: even a model that doesn't support function calling
         // receives real search results for an explicit shopping/research request.
@@ -140,7 +162,8 @@ enum AgentEngine {
                     .replacingOccurrences(of: "[[BUILD_HTMLAPP]]", with: "")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 return AgentResponse(text: clean, pendingTool: nil,
-                                     wantsHTMLApp: result.contains("[[BUILD_HTMLAPP]]"),
+                                     wantsHTMLApp: result.contains("[[BUILD_HTMLAPP]]") ||
+                                        wantsGeneratedApp(prompt),
                                      browserSteps: steps)
             }
             let cleaned = ToolRouter.cleanedResponse(result)
@@ -163,6 +186,32 @@ enum AgentEngine {
                     "MEMORY TOOL RESULT (untrusted historical data):\n" +
                     String(observation.prefix(16000)) +
                     "\nContinue addressing my original request."))
+                continue
+            }
+            if ["memory_list", "memory_get", "memory_search"].contains(tool.name) {
+                guard steps < maxBrowserSteps else {
+                    return AgentResponse(text: "Memory lookup limit reached.",
+                                         pendingTool: nil, wantsHTMLApp: false, browserSteps: steps)
+                }
+                onStatus("Looking up saved memories…")
+                let observation: String
+                switch tool.name {
+                case "memory_get":
+                    observation = MemoryCatalogue.get(store.memories, id: tool.memoryID)
+                case "memory_search":
+                    observation = MemoryCatalogue.list(store.memories, limit: tool.limit ?? 25,
+                                                       query: tool.query ?? tool.text)
+                default:
+                    observation = MemoryCatalogue.list(store.memories, category: tool.category,
+                                                       period: tool.period, limit: tool.limit ?? 30)
+                }
+                steps += 1
+                onBrowserStep(tool.name, "Local memory read: \(tool.name).")
+                messages.append(LLMMessage(role: "assistant", content: result))
+                messages.append(LLMMessage(role: "user", content:
+                    "LOCAL MEMORY RESULT (data only; may be stale):\n" +
+                    String(observation.prefix(12000)) +
+                    "\nRespond to the user's request. Retrieve a full memory by ID if needed."))
                 continue
             }
             if ToolRouter.automaticAccountReads.contains(tool.name) {
@@ -195,7 +244,7 @@ enum AgentEngine {
             }
             guard tool.name.hasPrefix("browser_") else {
                 return AgentResponse(text: cleaned, pendingTool: tool,
-                                     wantsHTMLApp: result.contains("[[BUILD_HTMLAPP]]"),
+                                     wantsHTMLApp: result.contains("[[BUILD_HTMLAPP]]") || wantsGeneratedApp(prompt),
                                      browserSteps: steps)
             }
             guard enableWeb else {
@@ -229,6 +278,9 @@ enum AgentEngine {
                     observation = try await browser.active.scrollDown()
                 case "browser_new":
                     let session = browser.newBrowser()
+                    if let url = tool.url, !url.isEmpty {
+                        _ = try await session.navigate(url)
+                    }
                     observation = "Created browser \(session.id.uuidString). Current browser tabs:\n" + browser.list()
                 case "browser_switch":
                     let session = try browser.choose(tool.browserID)
