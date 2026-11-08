@@ -139,8 +139,9 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             guard let url = components.url else { continue }
             do {
                 let observation = try await navigate(url.absoluteString)
-                if Self.looksLikeChallenge(observation) {
+                if Self.looksLikeChallenge(observation) || requiresHuman {
                     lastFailure = "Search engine requested human verification."
+                    returnControl()
                     continue
                 }
                 return observation
@@ -148,6 +149,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                 throw CancellationError()
             } catch {
                 lastFailure = error.localizedDescription
+                if requiresHuman { returnControl() }
                 continue
             }
         }
