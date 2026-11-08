@@ -34,7 +34,17 @@ struct RootView: View {
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }
         .onAppear {
-            if horizontalSizeClass == .compact { chatSidebar = .detailOnly }
+            chatSidebar = horizontalSizeClass == .compact ? .detailOnly : .all
+        }
+        .onChange(of: horizontalSizeClass) { sizeClass in
+            withAnimation(.easeInOut(duration: 0.2)) {
+                chatSidebar = sizeClass == .compact ? .detailOnly : .all
+            }
+        }
+        .onChange(of: selectedChatID) { selected in
+            if selected != nil && horizontalSizeClass == .compact {
+                withAnimation { chatSidebar = .detailOnly }
+            }
         }
         .tint(.cyan)
         .toolbarBackground(.regularMaterial, for: .tabBar)
