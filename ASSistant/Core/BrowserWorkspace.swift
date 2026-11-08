@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import Combine
 
 /// Multiple foreground WKWebView tabs with one shared persistent WebKit cookie
 /// store. Sessions are shared across all chats, but NOT with Safari.
@@ -8,11 +9,19 @@ final class BrowserWorkspace: ObservableObject {
     @Published private(set) var tabs: [BrowserSession] = []
     @Published var selectedID: UUID?
     @Published var fullScreen = false
+    private var observers: [UUID: AnyCancellable] = [:]
 
     init() {
         let initial = BrowserSession()
         tabs = [initial]
         selectedID = initial.id
+        observe(initial)
+    }
+
+    private func observe(_ session: BrowserSession) {
+        observers[session.id] = session.objectWillChange.sink { [weak self] _ in
+            Task { @MainActor in self?.objectWillChange.send() }
+        }
     }
 
     var current: BrowserSession {
@@ -67,6 +76,7 @@ final class BrowserWorkspace: ObservableObject {
     func newTab(url: String? = nil) -> BrowserSession {
         let tab = BrowserSession()
         tabs.append(tab)
+        observe(tab)
         selectedID = tab.id
         if let url {
             Task { _ = try? await tab.navigate(url) }
@@ -94,6 +104,7 @@ final class BrowserWorkspace: ObservableObject {
             tab.close()
         }
         tabs.removeAll { $0.id == id }
+        observers[id] = nil
         if selectedID == id { selectedID = tabs.first?.id }
     }
 }
