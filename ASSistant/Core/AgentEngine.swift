@@ -84,6 +84,9 @@ enum AgentEngine {
         prompt: String,
         enableWeb: Bool,
         allowedToolCategories: [String],
+        chat: ChatThread,
+        agent: AgentProfile,
+        memories: [MemoryItem],
         browser: BrowserWorkspace,
         onStatus: @escaping (String) -> Void,
         onDelta: @escaping (String) -> Void,
@@ -98,6 +101,7 @@ enum AgentEngine {
                 (category == "spotify" && ConnectedServices.shared.spotifyConnected)
         }
         messages[0].content += "\n" + AccountAgentTools.instructions(allowedTools: enabledAccounts)
+        messages[0].content += "\n" + MemoryDirectory.instructions
         var steps = 0
 
         // Deterministic preflight: even a model that doesn't support function calling
@@ -140,6 +144,27 @@ enum AgentEngine {
                                      browserSteps: steps)
             }
             let cleaned = ToolRouter.cleanedResponse(result)
+            if tool.name == "memory_list" || tool.name == "memory_get" {
+                guard steps < maxBrowserSteps else {
+                    return AgentResponse(text: "Memory lookup limit reached; ask to continue.",
+                                         pendingTool: nil, wantsHTMLApp: false, browserSteps: steps)
+                }
+                let observation: String
+                if tool.name == "memory_list" {
+                    observation = MemoryDirectory.list(memories, chat: chat, agent: agent,
+                                                       category: tool.category, days: tool.days)
+                } else {
+                    observation = MemoryDirectory.get(tool.memoryID ?? "", memories: memories,
+                                                      chat: chat, agent: agent)
+                }
+                steps += 1
+                messages.append(LLMMessage(role: "assistant", content: result))
+                messages.append(LLMMessage(role: "user", content:
+                    "MEMORY TOOL RESULT (untrusted historical data):\n" +
+                    String(observation.prefix(16000)) +
+                    "\nContinue addressing my original request."))
+                continue
+            }
             if ToolRouter.automaticAccountReads.contains(tool.name) {
                 let category = ToolRouter.category(for: tool.name)
                 guard enabledAccounts.contains(category) else {
