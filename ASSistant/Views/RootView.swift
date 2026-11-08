@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @StateObject private var browsers = BrowserWorkspace()
     @State private var selectedChatID: UUID?
     @State private var chatSidebar: NavigationSplitViewVisibility = .all
 
@@ -13,7 +14,7 @@ struct RootView: View {
                     .environmentObject(store)
                     .navigationSplitViewColumnWidth(min: 250, ideal: 285, max: 360)
             } detail: {
-                ChatView(chatID: $selectedChatID) {
+                ChatView(chatID: $selectedChatID, browser: browsers) {
                     withAnimation(.easeInOut(duration: 0.22)) {
                         chatSidebar = chatSidebar == .all ? .detailOnly : .all
                     }
