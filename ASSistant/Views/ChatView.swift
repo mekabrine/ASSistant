@@ -15,10 +15,13 @@ private struct BuildPrompt: Identifiable {
 struct ChatView: View {
     @EnvironmentObject private var store: AppStore
     @Binding var chatID: UUID?
+    @ObservedObject var browser: BrowserWorkspace
     var toggleSidebar: (() -> Void)?
 
-    init(chatID: Binding<UUID?>, toggleSidebar: (() -> Void)? = nil) {
+    init(chatID: Binding<UUID?>, browser: BrowserWorkspace,
+         toggleSidebar: (() -> Void)? = nil) {
         self._chatID = chatID
+        self.browser = browser
         self.toggleSidebar = toggleSidebar
     }
     @State private var composer = ""
@@ -40,7 +43,6 @@ struct ChatView: View {
     @State private var showAppDecision = false
     @State private var autoBuildStatus = ""
     @State private var appBuildTask: Task<Void, Never>?
-    @StateObject private var browser = BrowserWorkspace()
     @StateObject private var whisper = WhisperRecorder()
     @AppStorage("dictationEngine") private var dictationEngine = "whisper"
     @State private var showCallMode = false
