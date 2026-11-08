@@ -193,9 +193,6 @@ struct ChatView: View {
             .fullScreenCover(isPresented: $browser.fullScreen) {
                 BrowserFullScreenView(workspace: browser)
             }
-            .fullScreenCover(isPresented: $browser.fullScreen) {
-                BrowserFullScreenView(workspace: browser)
-            }
             .sheet(isPresented: $showActivity) {
                 AgentActivityView().environmentObject(store)
             }
@@ -692,7 +689,6 @@ struct ChatView: View {
                     enableWeb: store.agent(for: thread).allowedTools.contains("web"),
                     allowedToolCategories: store.agent(for: thread).allowedTools,
                     chat: thread, agent: store.agent(for: thread), memories: store.memories,
-                    store: store,
                     browser: browser,
                     onStatus: { status in
                         agentStatus = status
