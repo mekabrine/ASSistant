@@ -117,7 +117,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         status = "AI can continue"
     }
 
-    static func safeURL(_ raw: String) -> URL? {
+    nonisolated static func safeURL(_ raw: String) -> URL? {
         guard let url = URL(string: raw),
               url.scheme?.lowercased() == "https",
               url.user == nil, url.password == nil,
