@@ -133,6 +133,10 @@ enum AgentEngine {
                     return AgentResponse(text: "Connect and enable \(category) in Settings → Connected Accounts and Agents first.",
                                          pendingTool: nil, wantsHTMLApp: false, browserSteps: steps)
                 }
+                guard AccountAgentTools.userRequested(category, prompt: prompt) else {
+                    return AgentResponse(text: "I did not read your \(category) account because you did not request an account lookup.",
+                                         pendingTool: nil, wantsHTMLApp: false, browserSteps: steps)
+                }
                 guard steps < maxBrowserSteps else {
                     return AgentResponse(text: "Account lookup step limit reached.",
                                          pendingTool: nil, wantsHTMLApp: false, browserSteps: steps)
