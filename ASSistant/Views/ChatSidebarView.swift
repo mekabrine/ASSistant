@@ -129,7 +129,9 @@ struct ChatSidebarView: View {
             Button {
                 proposedName = chat.title
                 renameTarget = chat
-            } label: { Label("Rename", systemImage: "pencil") }
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
             Button {
                 var all = pinned
                 if all.contains(chat.id.uuidString) { all.remove(chat.id.uuidString) }
@@ -143,11 +145,15 @@ struct ChatSidebarView: View {
                 copy.archived = true
                 store.save(copy)
                 if selectedChatID == chat.id { selectedChatID = nil }
-            } label: { Label("Archive", systemImage: "archivebox") }
+            } label: {
+                Label("Archive", systemImage: "archivebox")
+            }
             Button(role: .destructive) {
                 store.delete(chat.id, kind: "chat")
                 if selectedChatID == chat.id { selectedChatID = nil }
-            } label: { Label("Delete", systemImage: "trash") }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 }
