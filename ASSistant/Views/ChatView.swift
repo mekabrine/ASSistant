@@ -502,6 +502,11 @@ struct ChatView: View {
         browser.resumeOnNextMessage()
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         let message = store.append(role: "user", text: text, to: thread)
+        if thread.title == "New Chat" {
+            var renamed = thread
+            renamed.title = ChatTitleService.fallback(text)
+            store.save(renamed)
+        }
         for candidate in MemoryEngine.candidates(from: text, messageID: message.id, chatID: thread.id) {
             if !MemoryEngine.containsSimilar(candidate, in: store.memories) {
                 store.save(candidate)
@@ -587,6 +592,10 @@ struct ChatView: View {
                     }
                 )
                 _ = store.append(role: "assistant", text: outcome.text, to: thread)
+                let count = store.messages(in: thread.id).count
+                if ChatTitleService.shouldRename(count: count) {
+                    Task { await updateChatTitle(threadID: thread.id, model: profile) }
+                }
                 if let tool = outcome.pendingTool {
                     let category = ToolRouter.category(for: tool.name)
                     if category == "task" || store.agent(for: thread).allowedTools.contains(category) {
@@ -613,6 +622,17 @@ struct ChatView: View {
             isLoading = false
             agentStatus = ""
             streaming = ""
+        }
+    }
+
+    private func updateChatTitle(threadID: UUID, model: ProviderProfile) async {
+        guard let thread = store.chats.first(where: { $0.id == threadID }) else { return }
+        if let title = await ChatTitleService.generate(
+            chat: thread, messages: store.messages(in: threadID),
+            availableProviders: store.providers, fallbackProvider: model
+        ), var updated = store.chats.first(where: { $0.id == threadID }) {
+            updated.title = title
+            store.save(updated)
         }
     }
 
