@@ -379,4 +379,59 @@ final class ASSistantTests: XCTestCase {
         XCTAssertTrue(MessageFormatter.allowedPreview("<div>Ready</div>"))
     }
 
+    @MainActor
+    func testChatBrowserStateRestoresSeparatePages() throws {
+        let firstID = UUID()
+        let secondID = UUID()
+        defer {
+            BrowserStateStore.remove(for: firstID)
+            BrowserStateStore.remove(for: secondID)
+        }
+        let tab = SavedBrowserTab(id: UUID(), url: "https://example.com/page",
+                                  title: "Saved example", pageExcerpt: "Visible page details",
+                                  scrollY: 220, visitedAt: .now)
+        BrowserStateStore.save(SavedChatBrowsers(
+            chatID: firstID, selectedTabID: tab.id, tabs: [tab],
+            dockX: 0.25, dockY: 0.55, savedAt: .now
+        ))
+        BrowserStateStore.save(SavedChatBrowsers(
+            chatID: secondID, selectedTabID: nil, tabs: [],
+            dockX: 0.8, dockY: 0.4, savedAt: .now
+        ))
+        let first = try XCTUnwrap(BrowserStateStore.load(for: firstID))
+        let second = try XCTUnwrap(BrowserStateStore.load(for: secondID))
+        XCTAssertEqual(first.tabs.first?.title, "Saved example")
+        XCTAssertEqual(first.tabs.first?.scrollY, 220)
+        XCTAssertEqual(first.selectedTabID, tab.id)
+        XCTAssertEqual(second.tabs.count, 0)
+        XCTAssertEqual(second.dockX, 0.8)
+    }
+
+    @MainActor
+    func testBrowserRestoreURLRejectsAuthTokensAndUnsafeDestinations() {
+        let restored = BrowserStateStore.restorableURL(
+            "https://example.com/search?q=apron&access_token=secret&state=abc"
+        )
+        XCTAssertEqual(restored, "https://example.com/search?q=apron")
+        XCTAssertNil(BrowserStateStore.restorableURL("http://example.com/search"))
+        XCTAssertNil(BrowserStateStore.restorableURL(
+            "https://example.com/oauth/callback?code=abc"))
+    }
+
+    func testLocalDraftsAreChatSpecific() {
+        let first = UUID()
+        let second = UUID()
+        defer {
+            ChatDraftStore.remove(first)
+            ChatDraftStore.remove(second)
+        }
+        ChatDraftStore.put("A long unsent message", for: first)
+        ChatDraftStore.put("Another draft", for: second)
+        XCTAssertEqual(ChatDraftStore.get(first), "A long unsent message")
+        XCTAssertEqual(ChatDraftStore.get(second), "Another draft")
+        ChatDraftStore.remove(first)
+        XCTAssertTrue(ChatDraftStore.get(first).isEmpty)
+        XCTAssertEqual(ChatDraftStore.get(second), "Another draft")
+    }
+
 }
