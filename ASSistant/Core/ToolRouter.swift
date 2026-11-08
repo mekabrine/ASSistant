@@ -21,11 +21,12 @@ struct ProposedTool: Codable, Identifiable {
     var limit: Int?
     var browserID: String?
     var days: Int?
+    var offset: Int?
 
     enum CodingKeys: String, CodingKey {
         case name, title, details, text, at, end, url, linkID, site,
              recipient, subject, query, uri, category, period, memoryID,
-             limit, browserID, days
+             limit, browserID, days, offset
     }
 }
 
