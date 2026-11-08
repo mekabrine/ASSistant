@@ -48,7 +48,8 @@ private struct AgentEditor: View {
     @State var agent: AgentProfile
     let isNew: Bool
     private let tools = ["reminder", "calendar", "contacts", "location", "clipboard",
-                         "notification", "htmlapp", "web", "speak"]
+                         "notification", "htmlapp", "web", "speak", "shortcuts", "sms",
+                         "phone", "gmail", "spotify"]
 
     var body: some View {
         NavigationStack {
