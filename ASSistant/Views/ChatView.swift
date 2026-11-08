@@ -572,6 +572,7 @@ struct ChatView: View {
                     prompt: userPrompt,
                     enableWeb: store.agent(for: thread).allowedTools.contains("web"),
                     allowedToolCategories: store.agent(for: thread).allowedTools,
+                    chat: thread, agent: store.agent(for: thread), memories: store.memories,
                     browser: browser,
                     onStatus: { status in
                         agentStatus = status
