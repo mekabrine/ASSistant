@@ -47,6 +47,12 @@ targets:
           - CFBundleURLName: com.mekabrine.ASSistant
             CFBundleURLSchemes:
               - assistant
+          - CFBundleURLName: com.mekabrine.ASSistant.googleOAuth
+            CFBundleURLSchemes:
+              - com.mekabrine.assistant
+          - CFBundleURLName: com.mekabrine.ASSistant.spotifyOAuth
+            CFBundleURLSchemes:
+              - assistantspotify
         UIBackgroundModes: []
         ITSAppUsesNonExemptEncryption: false
         NSContactsUsageDescription: "Read contacts only when you explicitly approve a contact action."
