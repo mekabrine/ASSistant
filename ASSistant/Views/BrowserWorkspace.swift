@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import WebKit
+import Combine
 
 /// Browser windows share the app's persistent WebKit website data store so
 /// logins remain available across chats. They never borrow Safari cookies.
@@ -12,9 +13,17 @@ final class BrowserWorkspace: ObservableObject {
     @Published var fullScreen = false
     @Published var awaitingHuman = false
     @Published var handoffBrowserID: UUID?
+    private var observers: [UUID: AnyCancellable] = [:]
 
     init() {
         selectedID = sessions.first?.id
+        if let first = sessions.first { observe(first) }
+    }
+
+    private func observe(_ tab: BrowserSession) {
+        observers[tab.id] = tab.objectWillChange.sink { [weak self] _ in
+            Task { @MainActor in self?.objectWillChange.send() }
+        }
     }
 
     var active: BrowserSession {
@@ -28,13 +37,15 @@ final class BrowserWorkspace: ObservableObject {
         if sessions.count >= 6 {
             // Bound live web processes, preserving all cookies.
             if let old = sessions.first(where: { $0.id != selectedID && !$0.activeAgent }) {
-                old.stop()
+                old.close()
+                observers[old.id] = nil
                 sessions.removeAll { $0.id == old.id }
             }
         }
         let item = BrowserSession()
         item.visible = true
         sessions.append(item)
+        observe(item)
         selectedID = item.id
         return item
     }
@@ -112,7 +123,8 @@ final class BrowserWorkspace: ObservableObject {
     }
 
     func clearBrowserLogins() async {
-        stopAll()
+        for tab in sessions { tab.close() }
+        observers.removeAll()
         let types = WKWebsiteDataStore.allWebsiteDataTypes()
         await withCheckedContinuation { continuation in
             WKWebsiteDataStore.default().removeData(ofTypes: types, modifiedSince: .distantPast) {
@@ -120,6 +132,7 @@ final class BrowserWorkspace: ObservableObject {
             }
         }
         sessions = [BrowserSession()]
+        observe(sessions[0])
         selectedID = sessions[0].id
         awaitingHuman = false
         handoffBrowserID = nil
