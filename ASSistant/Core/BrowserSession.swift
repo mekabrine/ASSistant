@@ -34,6 +34,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     let web: WKWebView
     @Published var waitingForHuman = false
     @Published var handoffReason = ""
+    var requiresHuman: Bool { waitingForHuman }
     private var handoffWaiter: CheckedContinuation<Void, Error>?
     let id = UUID()
     @Published var requiresHuman = false
@@ -253,6 +254,12 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             result += controls.prefix(30).map {
                 "\($0.id) \($0.kind) \($0.inputType) \($0.text) \($0.placeholder)"
             }.joined(separator: "\n")
+            if Self.needsHuman(result) {
+                waitingForHuman = true
+                handoffReason = "This site requires sign-in, a CAPTCHA, or another verification. Complete it yourself, then tap Return control to AI."
+                status = "Human verification required"
+                return "Protected page requires a human action. Do not inspect or solve secrets, passwords or CAPTCHA: wait for user."
+            }
             return String(result.prefix(17500))
         } catch {
             lastError = error.localizedDescription
