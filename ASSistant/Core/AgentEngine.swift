@@ -11,7 +11,7 @@ struct AgentResponse {
 /// Native actions still require the ChatView approval sheet.
 @MainActor
 enum AgentEngine {
-    static let maxBrowserSteps = 6
+    static let defaultMaximumSteps = 10
 
     static let webInstructions = """
     You are a useful agent with access to a REAL foreground web browser.
@@ -110,6 +110,8 @@ enum AgentEngine {
         }
         messages[0].content += "\n" + AccountAgentTools.instructions(allowedTools: enabledAccounts)
         messages[0].content += "\n" + MemoryDirectory.instructions
+        let configured = UserDefaults.standard.object(forKey: "agentMaxSteps") as? Int ?? defaultMaximumSteps
+        let maxSteps = max(3, min(20, configured))
         var steps = 0
         let normalized = prompt.lowercased()
         if ["what do you remember", "list my memories", "show my memories",
@@ -147,7 +149,7 @@ enum AgentEngine {
             }
         }
 
-        for turn in 0..<(maxBrowserSteps + 1) {
+        for turn in 0..<(maxSteps + 1) {
             try Task.checkCancellation()
             onStatus(turn == 0 ? "Thinking…" : "Reading findings…")
             let result = try await LLMService.request(profile: profile, messages: messages) { chunk in
