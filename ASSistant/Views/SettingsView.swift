@@ -7,6 +7,8 @@ struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
     @State private var createProvider = false
     @State private var showAgents = false
+    @State private var showAccounts = false
+    @State private var showDeviceActions = false
     @State private var editingProvider: ProviderProfile?
     @State private var gistToken = ""
     @State private var publisherToken = ""
@@ -25,6 +27,16 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("Connected apps and accounts") {
+                    Button { showAccounts = true } label: {
+                        Label("Connect Google / Gmail and Spotify", systemImage: "point.3.connected.trianglepath.dotted")
+                    }
+                    Button { showDeviceActions = true } label: {
+                        Label("Phone, Messages, Shortcuts & Contacts", systemImage: "iphone")
+                    }
+                    Text("Connect external services with OAuth. Sending messages, calling, and account modifications are confirmation-gated.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Section("Agent personalities and control") {
                     Button {
                         showAgents = true
@@ -196,6 +208,12 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .sheet(isPresented: $showAgents) {
                 AgentsView().environmentObject(store)
+            }
+            .sheet(isPresented: $showAccounts) {
+                ConnectedAccountsView().environmentObject(store)
+            }
+            .sheet(isPresented: $showDeviceActions) {
+                DeviceActionsView().environmentObject(store)
             }
             .sheet(isPresented: $createProvider) {
                 ProviderEditor(profile: ProviderProfile(), isNew: true).environmentObject(store)
