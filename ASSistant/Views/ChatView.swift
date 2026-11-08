@@ -104,6 +104,7 @@ struct ChatView: View {
                             }
                             .padding()
                         }
+                        .scrollDismissesKeyboard(.interactively)
                         .onChange(of: currentMessages.count) { _ in
                             if let last = currentMessages.last {
                                 withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -145,9 +146,8 @@ struct ChatView: View {
                 }
             }
             .background(AmbientBackground())
-            .overlay(alignment: .bottomTrailing) {
+            .overlay {
                 BrowserDock(workspace: browser)
-                    .padding(.bottom, 100)
             }
             .navigationTitle(current?.title ?? "ASSistant")
             .navigationBarTitleDisplayMode(.inline)
@@ -328,11 +328,50 @@ struct ChatView: View {
             }
             .onAppear { ensureChat() }
             .onChange(of: store.database.ready) { _ in ensureChat() }
+            .onChange(of: chatID) { value in
+                if isLoading {
+                    task?.cancel()
+                    activeRequestID = UUID()
+                    isLoading = false
+                    streaming = ""
+                    agentStatus = ""
+                }
+                browser.activateChat(value)
+                attachmentsExpanded = false
+                composer = ""
+                errorText = ""
+            }
         }
     }
 
     private var composerArea: some View {
         VStack(spacing: 8) {
+            if attachmentsExpanded {
+                HStack(spacing: 14) {
+                    Button {
+                        attachmentsExpanded = false
+                        importFile = true
+                    } label: {
+                        Label("Files", systemImage: "doc")
+                    }
+                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        Label("Photos", systemImage: "photo")
+                    }
+                    .onChange(of: selectedPhoto) { _ in
+                        attachmentsExpanded = false
+                    }
+                    Button {
+                        attachmentsExpanded = false
+                        cameraOpen = true
+                    } label: {
+                        Label("Camera", systemImage: "camera.fill")
+                    }
+                    Spacer(minLength: 0)
+                }
+                .font(.subheadline)
+                .buttonStyle(.bordered)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
             HStack(alignment: .bottom, spacing: 8) {
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
@@ -344,22 +383,6 @@ struct ChatView: View {
                         .rotationEffect(.degrees(attachmentsExpanded ? 45 : 0))
                 }
                 .accessibilityLabel("Expand attachments")
-                if attachmentsExpanded {
-                    Button {
-                        attachmentsExpanded = false
-                        importFile = true
-                    } label: { Image(systemName: "doc").font(.title3) }
-                    .accessibilityLabel("Attach file")
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                        Image(systemName: "photo").font(.title3)
-                    }
-                    .accessibilityLabel("Choose photo")
-                    Button {
-                        attachmentsExpanded = false
-                        cameraOpen = true
-                    } label: { Image(systemName: "camera.fill").font(.title3) }
-                    .accessibilityLabel("Take photo")
-                }
                 Button {
                     if dictationEngine == "apple" {
                         if speech.recording { speech.stop() }
@@ -394,11 +417,23 @@ struct ChatView: View {
                 .accessibilityLabel(whisper.isRecording || speech.recording ? "Stop and transcribe" : "Start dictation")
                 .disabled(isLoading || whisper.isTranscribing)
                 if whisper.isTranscribing { ProgressView().controlSize(.small) }
-                TextEditor(text: $composer)
-                    .frame(minHeight: 42, maxHeight: 116)
-                    .padding(4)
-                    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                    .accessibilityLabel("Message")
+                ZStack(alignment: .topLeading) {
+                    if composer.isEmpty {
+                        Text("Message ASSistant…")
+                            .font(.body)
+                            .foregroundStyle(.tertiary)
+                            .padding(.leading, 12)
+                            .padding(.top, 11)
+                            .allowsHitTesting(false)
+                    }
+                    GrowingMessageInput(text: $composer, maximumHeight: 210)
+                        .frame(minHeight: 44, maxHeight: 210)
+                        .layoutPriority(1)
+                }
+                .background(Color.secondary.opacity(0.09),
+                            in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 18)
+                    .stroke(Color.cyan.opacity(0.12), lineWidth: 1))
                 Button {
                     if isLoading && composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         task?.cancel()
