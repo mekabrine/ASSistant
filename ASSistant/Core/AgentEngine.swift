@@ -166,7 +166,7 @@ enum AgentEngine {
             }
             let cleaned = ToolRouter.cleanedResponse(result)
             if ["memory_list", "memory_get", "memory_search"].contains(tool.name) {
-                guard steps < maxBrowserSteps else {
+                guard steps < maxSteps else {
                     return AgentResponse(text: "Memory lookup limit reached. Ask me to continue.",
                                          pendingTool: nil, wantsHTMLApp: false, browserSteps: steps)
                 }
@@ -220,7 +220,7 @@ enum AgentEngine {
                     return AgentResponse(text: "I did not read your \(category) account because you did not request an account lookup.",
                                          pendingTool: nil, wantsHTMLApp: false, browserSteps: steps)
                 }
-                guard steps < maxBrowserSteps else {
+                guard steps < maxSteps else {
                     return AgentResponse(text: "Account lookup step limit reached.",
                                          pendingTool: nil, wantsHTMLApp: false, browserSteps: steps)
                 }
@@ -247,7 +247,7 @@ enum AgentEngine {
                 return AgentResponse(text: "This agent's web tool is disabled.", pendingTool: nil,
                                      wantsHTMLApp: false, browserSteps: steps)
             }
-            guard steps < maxBrowserSteps else {
+            guard steps < maxSteps else {
                 return AgentResponse(text: "I reached the browsing step limit. " +
                     "I can continue researching if you ask, or you can take over the browser.",
                     pendingTool: nil, wantsHTMLApp: false, browserSteps: steps)
