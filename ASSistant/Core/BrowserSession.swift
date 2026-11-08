@@ -32,11 +32,6 @@ enum BrowserFailure: LocalizedError {
 final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     let id = UUID()
     let web: WKWebView
-    @Published var waitingForHuman = false
-    @Published var handoffReason = ""
-    var requiresHuman: Bool { waitingForHuman }
-    private var handoffWaiter: CheckedContinuation<Void, Error>?
-    let id = UUID()
     @Published var requiresHuman = false
     @Published var handoffReason = ""
     @Published var activeAgent = false
@@ -64,7 +59,6 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         web = WKWebView(frame: .zero, configuration: config)
         super.init()
-        web.configuration.userContentController.add(self, name: "assistantUserAction")
         web.navigationDelegate = self
         web.uiDelegate = self
         config.userContentController.add(self, name: "assistantUserInteraction")
@@ -255,10 +249,14 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                 "\($0.id) \($0.kind) \($0.inputType) \($0.text) \($0.placeholder)"
             }.joined(separator: "\n")
             if Self.needsHuman(result) {
-                waitingForHuman = true
-                handoffReason = "This site requires sign-in, a CAPTCHA, or another verification. Complete it yourself, then tap Return control to AI."
-                status = "Human verification required"
-                return "Protected page requires a human action. Do not inspect or solve secrets, passwords or CAPTCHA: wait for user."
+                // Search providers are allowed to fall back to Bing/DDG before
+                // requiring a human CAPTCHA handoff.
+                let host = web.url?.host?.lowercased() ?? ""
+                if ["www.google.com", "www.bing.com", "duckduckgo.com"].contains(host) {
+                    return String(result.prefix(17500))
+                }
+                requestHuman("Complete the site sign-in, CAPTCHA, or security challenge, then tap Return control to AI.")
+                return "Protected page requires human action. Do not read credentials or security codes."
             }
             return String(result.prefix(17500))
         } catch {
@@ -342,36 +340,9 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func close() {
         stop()
-        if let waiter = handoffWaiter {
-            handoffWaiter = nil
-            waiter.resume(throwing: CancellationError())
-        }
-        waitingForHuman = false
         visible = false
         expanded = false
-        userControl = true
-    }
-
-    func returnToAgent() {
-        userControl = false
-        waitingForHuman = false
-        handoffReason = ""
-        status = "AI has control"
-        if let waiter = handoffWaiter {
-            handoffWaiter = nil
-            waiter.resume()
-        }
-    }
-
-    func requestHuman(reason: String) async throws {
-        waitingForHuman = true
-        handoffReason = String(reason.prefix(400))
-        userControl = true
-        visible = true
-        status = "Waiting for human verification"
-        try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
-            handoffWaiter = c
-        }
+        returnControl()
     }
 
     static func needsHuman(_ observation: String) -> Bool {
@@ -382,15 +353,6 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                 "enter the verification code", "confirm your identity",
                 "sign in to continue", "log in to continue",
                 "unusual traffic from your computer network"].contains(where: lower.contains)
-    }
-
-    func userContentController(_ userContentController: WKUserContentController,
-                               didReceive message: WKScriptMessage) {
-        guard message.name == "assistantUserAction",
-              let action = message.body as? String,
-              action == "click" || action == "input" else { return }
-        userControl = true
-        status = "You are controlling this tab"
     }
 
     func stop() {
