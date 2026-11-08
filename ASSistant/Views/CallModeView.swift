@@ -15,7 +15,7 @@ struct CallModeView: View {
     @StateObject private var whisper = WhisperRecorder()
     @StateObject private var apple = SpeechRecorder()
     @StateObject private var speaker = CallSpeaker()
-    @AppStorage("dictationEngine") private var dictationEngine = "whisper"
+    @AppStorage("dictationEngine") private var dictationEngine = "offline"
     @State private var connected = false
     @State private var muted = false
     @State private var awaitingAnswer = false
