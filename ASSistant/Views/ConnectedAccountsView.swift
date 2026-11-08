@@ -3,6 +3,7 @@ import SwiftUI
 @MainActor
 struct ConnectedAccountsView: View {
     @ObservedObject private var accounts = ConnectedServices.shared
+    @EnvironmentObject private var store: AppStore
     @Environment(\.dismiss) private var dismiss
     @AppStorage("googleOAuthClientID") private var googleClientID = ""
     @AppStorage("spotifyOAuthClientID") private var spotifyClientID = ""
@@ -95,6 +96,40 @@ struct ConnectedAccountsView: View {
                     } else {
                         Button("Sign in with Spotify") { connect(.spotify) }
                             .disabled(working != nil || spotifyClientID.isEmpty)
+                    }
+                }
+                Section("Agent access to connected accounts") {
+                    Text("Connecting an account does not automatically give every agent permission to read it. Enable access per agent. The result of an authorized account read is sent to your selected AI provider as chat context.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(store.agents) { agent in
+                        if accounts.googleConnected {
+                            Toggle("\(agent.name): Gmail", isOn: Binding(
+                                get: { agent.allowedTools.contains("gmail") },
+                                set: { grant in
+                                    var updated = agent
+                                    if grant && !updated.allowedTools.contains("gmail") {
+                                        updated.allowedTools.append("gmail")
+                                    } else if !grant {
+                                        updated.allowedTools.removeAll { $0 == "gmail" }
+                                    }
+                                    store.save(updated)
+                                }
+                            ))
+                        }
+                        if accounts.spotifyConnected {
+                            Toggle("\(agent.name): Spotify", isOn: Binding(
+                                get: { agent.allowedTools.contains("spotify") },
+                                set: { grant in
+                                    var updated = agent
+                                    if grant && !updated.allowedTools.contains("spotify") {
+                                        updated.allowedTools.append("spotify")
+                                    } else if !grant {
+                                        updated.allowedTools.removeAll { $0 == "spotify" }
+                                    }
+                                    store.save(updated)
+                                }
+                            ))
+                        }
                     }
                 }
                 if working != nil {
