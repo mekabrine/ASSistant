@@ -733,7 +733,11 @@ struct ChatView: View {
                             "The \(category) tool is disabled for this agent. Enable it in Settings → Agents.", to: thread)
                     }
                 }
-                if shouldBuildHTMLApp(userPrompt) {
+                let appToolAllowed = store.agent(for: thread).allowedTools.contains("htmlapp")
+                if shouldBuildHTMLApp(userPrompt) ||
+                   (outcome.wantsHTMLApp && appToolAllowed) {
+                    // Draft stays local in chat; public publishing and importing
+                    // still require an explicit user tap on the preview card.
                     beginInlineHTMLApp(userPrompt, thread: thread, profile: profile)
                 } else if outcome.wantsHTMLApp {
                     suggestedAppPrompt = userPrompt
