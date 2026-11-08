@@ -69,7 +69,7 @@ enum MemoryEngine {
         for (item, _) in scored {
             let n = estimatedTokens(item.text)
             if factTokens + n > min(1300, maxInput / 5) { break }
-            facts.append("- [\(item.kind)] \(item.text)")
+            facts.append("- [\(item.category ?? item.kind), id=\(item.id.uuidString)] \(item.text)")
             factTokens += n
         }
         if !facts.isEmpty { _ = append("system", "Relevant saved memory (may be stale; verify when consequential):\n" + facts.joined(separator: "\n")) }
@@ -142,37 +142,43 @@ enum MemoryEngine {
         let lower = value.lowercased()
         guard value.count >= 9, value.count <= 1300, !looksSensitive(value) else { return [] }
         let patterns: [(String, String, String)] = [
-            ("remember that ", "fact", "global"),
-            ("remember: ", "fact", "global"),
-            ("i prefer ", "preference", "global"),
-            ("i like ", "preference", "global"),
-            ("i love ", "preference", "global"),
-            ("i dislike ", "preference", "global"),
-            ("i don't like ", "preference", "global"),
-            ("my favorite ", "preference", "global"),
-            ("my favourite ", "preference", "global"),
-            ("my preference is ", "preference", "global"),
-            ("my goal is ", "goal", "global"),
-            ("i am learning ", "goal", "global"),
-            ("i usually ", "routine", "global"),
-            ("i always ", "routine", "global"),
-            ("i work as ", "work", "global"),
-            ("i work on ", "project", "global"),
-            ("i use ", "technology", "global"),
-            ("i collect ", "hobby", "global"),
-            ("my hobby is ", "hobby", "global"),
-            ("my style is ", "style", "global"),
-            ("my project ", "project", "chat:\(chatID.uuidString)"),
-            ("for this project ", "project", "chat:\(chatID.uuidString)")
+            ("remember that ", "fact", "Personal"),
+            ("remember: ", "fact", "Personal"),
+            ("i prefer ", "preference", "Preferences"),
+            ("i like ", "preference", "Preferences"),
+            ("i love ", "preference", "Preferences"),
+            ("i dislike ", "preference", "Preferences"),
+            ("i hate ", "preference", "Preferences"),
+            ("i don't like ", "preference", "Preferences"),
+            ("my favorite ", "preference", "Preferences"),
+            ("my favourite ", "preference", "Preferences"),
+            ("my name is ", "fact", "About Me"),
+            ("i work as ", "fact", "Work"),
+            ("i work at ", "fact", "Work"),
+            ("i live in ", "fact", "About Me"),
+            ("i usually ", "routine", "Routines"),
+            ("i always ", "routine", "Routines"),
+            ("my goal is ", "goal", "Goals"),
+            ("my project ", "project", "Projects"),
+            ("for this project ", "project", "Projects")
         ]
         guard let match = patterns.first(where: { lower.hasPrefix($0.0) }) else { return [] }
-        let remainder = value.dropFirst(match.0.count)
+        let scope = match.1 == "project" ? "chat:\(chatID.uuidString)" : "global"
+        // Retain an explicit first-person statement, not an AI-inferred trait.
+        let excerpt = String(value.prefix(450))
+        guard !looksSensitive(excerpt) else { return [] }
+        var candidate = MemoryItem(text: excerpt, kind: match.1, scope: scope,
+                                   sourceMessageID: messageID, importance: 0.65)
+        candidate.category = match.2
+        candidate.title = shortTitle(excerpt)
+        return [candidate]
+    }
+
+    static func shortTitle(_ value: String) -> String {
+        let trimmed = value.replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard remainder.count >= 3, !looksSensitive(remainder) else { return [] }
-        let text = match.0 + remainder
-        return [MemoryItem(text: String(text.prefix(900)), kind: match.1,
-                           scope: match.2, sourceMessageID: messageID,
-                           importance: match.1 == "preference" ? 0.78 : 0.68)]
+        let words = trimmed.split(separator: " ").prefix(9).joined(separator: " ")
+        return String(words.prefix(75))
     }
 
     static func containsSimilar(_ item: MemoryItem, in items: [MemoryItem]) -> Bool {
