@@ -14,7 +14,13 @@ private struct BuildPrompt: Identifiable {
 @MainActor
 struct ChatView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var chatID: UUID?
+    @Binding var chatID: UUID?
+    var toggleSidebar: (() -> Void)?
+
+    init(chatID: Binding<UUID?>, toggleSidebar: (() -> Void)? = nil) {
+        self._chatID = chatID
+        self.toggleSidebar = toggleSidebar
+    }
     @State private var composer = ""
     @State private var streaming = ""
     @State private var errorText = ""
@@ -134,7 +140,10 @@ struct ChatView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .navigationBarLeading) {
-                    Button { showChats = true } label: { Image(systemName: "line.3.horizontal") }
+                    Button {
+                        toggleSidebar?()
+                    } label: { Image(systemName: "sidebar.left") }
+                    .accessibilityLabel("Toggle chat sidebar")
                     Button { newChat() } label: { Image(systemName: "square.and.pencil") }
                 }
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
@@ -170,6 +179,9 @@ struct ChatView: View {
                         Button("Stop speaking") { DeviceTools.shared.stopSpeaking() }
                     } label: { Image(systemName: "ellipsis.circle") }
                 }
+            }
+            .fullScreenCover(isPresented: $browser.fullScreen) {
+                BrowserFullScreenView(workspace: browser)
             }
             .fullScreenCover(isPresented: $browser.fullScreen) {
                 BrowserFullScreenView(workspace: browser)
@@ -578,6 +590,7 @@ struct ChatView: View {
                     enableWeb: store.agent(for: thread).allowedTools.contains("web"),
                     allowedToolCategories: store.agent(for: thread).allowedTools,
                     chat: thread, agent: store.agent(for: thread), memories: store.memories,
+                    store: store,
                     browser: browser,
                     onStatus: { status in
                         agentStatus = status
