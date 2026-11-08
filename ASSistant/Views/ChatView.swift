@@ -27,6 +27,8 @@ struct ChatView: View {
     @State private var isLoading = false
     @State private var showChats = false
     @State private var importFile = false
+    @State private var attachmentsExpanded = false
+    @State private var cameraOpen = false
     @State private var buildPrompt: BuildPrompt?
     @State private var pendingTool: ProposedTool?
     @State private var toolAlert = false
@@ -224,6 +226,12 @@ struct ChatView: View {
                 AppBuilderScreen(initialPrompt: prompt.text)
                     .environmentObject(store)
             }
+            .sheet(isPresented: $cameraOpen) {
+                CameraCaptureView(onCapture: { bytes in
+                    cameraOpen = false
+                    Task { await addPhotoText(bytes, label: "Camera photo") }
+                }, onCancel: { cameraOpen = false })
+            }
             .fileImporter(isPresented: $importFile, allowedContentTypes: [.plainText, .json, .html, .pdf]) { result in
                 switch result {
                 case .success(let url):
@@ -296,9 +304,7 @@ struct ChatView: View {
                             errorText = "Could not load selected photo."
                             return
                         }
-                        let extracted = try await Self.extractPhotoText(bytes)
-                        if extracted.isEmpty { errorText = "No readable text found in the photo." }
-                        else { composer += "\n\nText recognized from photo:\n" + String(extracted.prefix(16000)) }
+                        await addPhotoText(bytes, label: "Selected photo")
                     } catch { errorText = error.localizedDescription }
                 }
             }
@@ -317,14 +323,32 @@ struct ChatView: View {
     private var composerArea: some View {
         VStack(spacing: 8) {
             HStack(alignment: .bottom, spacing: 8) {
-                Button { importFile = true } label: { Image(systemName: "paperclip").font(.title3) }
-                    .accessibilityLabel("Attach text or PDF file")
-                    .disabled(isLoading)
-                PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                    Image(systemName: "photo").font(.title3)
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        attachmentsExpanded.toggle()
+                    }
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .rotationEffect(.degrees(attachmentsExpanded ? 45 : 0))
                 }
-                .accessibilityLabel("Read text from photo")
-                .disabled(isLoading)
+                .accessibilityLabel("Expand attachments")
+                if attachmentsExpanded {
+                    Button {
+                        attachmentsExpanded = false
+                        importFile = true
+                    } label: { Image(systemName: "doc").font(.title3) }
+                    .accessibilityLabel("Attach file")
+                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        Image(systemName: "photo").font(.title3)
+                    }
+                    .accessibilityLabel("Choose photo")
+                    Button {
+                        attachmentsExpanded = false
+                        cameraOpen = true
+                    } label: { Image(systemName: "camera.fill").font(.title3) }
+                    .accessibilityLabel("Take photo")
+                }
                 Button {
                     if dictationEngine == "apple" {
                         if speech.recording { speech.stop() }
@@ -433,6 +457,17 @@ struct ChatView: View {
         .padding(18)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 24))
         .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.cyan.opacity(0.14)))
+    }
+
+    private func addPhotoText(_ bytes: Data, label: String) async {
+        do {
+            let extracted = try await Self.extractPhotoText(bytes)
+            if extracted.isEmpty {
+                errorText = "No readable text was found in the photo. Image-model input isn't enabled for this provider."
+            } else {
+                composer += "\n\n" + label + " OCR:\n" + String(extracted.prefix(16000))
+            }
+        } catch { errorText = error.localizedDescription }
     }
 
     private static func extractPhotoText(_ data: Data) async throws -> String {
