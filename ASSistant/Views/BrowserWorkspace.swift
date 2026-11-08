@@ -296,13 +296,54 @@ final class BrowserWorkspace: ObservableObject {
 @MainActor
 struct BrowserDock: View {
     @ObservedObject var workspace: BrowserWorkspace
+    @GestureState private var drag: CGSize = .zero
 
     var body: some View {
-        if workspace.anyVisible && !workspace.fullScreen {
-            BrowserDockContent(workspace: workspace, session: workspace.active)
-                .padding(12)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
+        GeometryReader { geometry in
+            if workspace.anyVisible && !workspace.fullScreen {
+                let width = geometry.size.width
+                let height = geometry.size.height
+                let minX = min(width / 2, 136.0)
+                let minY = min(height / 2, 88.0)
+                let maxX = max(minX, width - minX)
+                let maxY = max(minY, height - 145.0)
+                let centerX = clamp(CGFloat(workspace.dockX) * width + drag.width,
+                                    minX, maxX)
+                let centerY = clamp(CGFloat(workspace.dockY) * height + drag.height,
+                                    minY, maxY)
+
+                BrowserDockContent(workspace: workspace, session: workspace.active)
+                    .padding(10)
+                    .position(x: centerX, y: centerY)
+                    .gesture(
+                        DragGesture(minimumDistance: 8)
+                            .updating($drag) { value, state, _ in
+                                state = value.translation
+                            }
+                            .onEnded { value in
+                                let finalX = clamp(
+                                    CGFloat(workspace.dockX) * width + value.translation.width,
+                                    minX, maxX
+                                )
+                                let finalY = clamp(
+                                    CGFloat(workspace.dockY) * height + value.translation.height,
+                                    minY, maxY
+                                )
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                    workspace.moveDock(x: Double(finalX / max(width, 1)),
+                                                       y: Double(finalY / max(height, 1)))
+                                }
+                                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                            }
+                    )
+                    .accessibilityHint("Drag to move; tap to open. Position is saved for this chat.")
+                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+            }
         }
+    }
+
+    private func clamp(_ value: CGFloat, _ lower: CGFloat, _ upper: CGFloat) -> CGFloat {
+        min(upper, max(lower, value))
     }
 }
 
