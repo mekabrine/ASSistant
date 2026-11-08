@@ -114,10 +114,15 @@ struct SettingsView: View {
                 }
                 Section {
                     Picker("Dictation engine", selection: $dictationEngine) {
-                        Text("Whisper-compatible API").tag("whisper")
-                        Text("Apple Speech (if working)").tag("apple")
+                        Text("Free on-device Whisper").tag("offline")
+                        Text("Cloud Whisper API").tag("whisper")
+                        Text("Apple Speech").tag("apple")
                     }
                     .pickerStyle(.segmented)
+                    if dictationEngine == "offline" {
+                        Text("WhisperKit runs speech recognition on your device without a transcription API key. A model is downloaded the first time you use it (internet and free storage required). Transcribed audio is not uploaded to a speech API.")
+                            .font(.footnote).foregroundColor(.secondary)
+                    }
                     if dictationEngine == "whisper" {
                         TextField("Transcription URL (optional if using chat provider)", text: $sttEndpoint)
                             .keyboardType(.URL).textInputAutocapitalization(.never)
