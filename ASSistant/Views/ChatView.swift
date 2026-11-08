@@ -389,12 +389,13 @@ struct ChatView: View {
                     .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                     .accessibilityLabel("Message")
                 Button {
-                    if isLoading {
+                    if isLoading && composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         task?.cancel()
                         browser.stopAll()
                     } else { send() }
                 } label: {
-                    Image(systemName: isLoading ? "stop.circle.fill" : "arrow.up.circle.fill")
+                    Image(systemName: isLoading && composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? "stop.circle.fill" : "arrow.up.circle.fill")
                         .font(.system(size: 30))
                 }
                 .disabled(!isLoading && composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -541,7 +542,13 @@ struct ChatView: View {
     }
 
     private func sendText(_ text: String) {
-        guard let thread = current, !isLoading else { return }
+        guard let thread = current else { return }
+        if isLoading {
+            task?.cancel()
+            browser.resumeOnNextMessage()
+            isLoading = false
+            streaming = ""
+        }
         guard store.provider(for: thread) != nil else {
             errorText = "Add an API provider in Settings first."
             return
@@ -668,9 +675,11 @@ struct ChatView: View {
             } catch {
                 errorText = error.localizedDescription
             }
-            isLoading = false
-            agentStatus = ""
-            streaming = ""
+            if !Task.isCancelled {
+                isLoading = false
+                agentStatus = ""
+                streaming = ""
+            }
         }
     }
 
