@@ -495,10 +495,10 @@ struct ChatView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .frame(maxWidth: 860)
-        .frame(maxWidth: .infinity)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.cyan.opacity(0.14)))
+        .frame(maxWidth: 860)
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 6)
         .padding(.bottom, 4)
     }
