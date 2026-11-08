@@ -854,6 +854,11 @@ private struct MessageEditSheet: View {
     }
 }
 
+private struct ChatGroup: Identifiable {
+    let id: String
+    let chats: [ChatThread]
+}
+
 private struct ChatPicker: View {
     @EnvironmentObject var store: AppStore
     @Environment(\.dismiss) private var dismiss
@@ -872,7 +877,7 @@ private struct ChatPicker: View {
         }.sorted { $0.updatedAt > $1.updatedAt }
     }
 
-    private var groups: [(String, [ChatThread])] {
+    private var groups: [ChatGroup] {
         let calendar = Calendar.current
         let today = filtered.filter { calendar.isDateInToday($0.updatedAt) }
         let yesterday = filtered.filter { calendar.isDateInYesterday($0.updatedAt) }
@@ -881,8 +886,11 @@ private struct ChatPicker: View {
             $0.updatedAt > Date().addingTimeInterval(-7 * 86400)
         }
         let older = filtered.filter { $0.updatedAt <= Date().addingTimeInterval(-7 * 86400) }
-        return [("Today",today), ("Yesterday",yesterday), ("Previous 7 days",week), ("Older",older)]
-            .filter { !$0.1.isEmpty }
+        return [ChatGroup(id: "Today", chats: today),
+                ChatGroup(id: "Yesterday", chats: yesterday),
+                ChatGroup(id: "Previous 7 days", chats: week),
+                ChatGroup(id: "Older", chats: older)]
+            .filter { !$0.chats.isEmpty }
     }
 
     var body: some View {
@@ -898,9 +906,9 @@ private struct ChatPicker: View {
                     }
                     Toggle("Show archived conversations", isOn: $showArchived)
                 }
-                ForEach(groups, id: \.0) { group in
-                    Section(group.0) {
-                        ForEach(group.1) { chat in
+                ForEach(groups) { group in
+                    Section(group.id) {
+                        ForEach(group.chats) { chat in
                             Button {
                                 selected = chat.id
                                 dismiss()
