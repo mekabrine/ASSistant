@@ -4,6 +4,19 @@ import Foundation
 /// all network requests are directed to official Google/Spotify API hosts.
 @MainActor
 enum AccountAgentTools {
+    static func userRequested(_ category: String, prompt: String) -> Bool {
+        let value = prompt.lowercased()
+        if category == "gmail" {
+            return ["gmail", "email", "e-mail", "inbox", "my mail",
+                    "unread mail", "message from", "messages from"].contains(where: value.contains)
+        }
+        if category == "spotify" {
+            return ["spotify", "playlist", "song", "music", "track",
+                    "what's playing", "now playing", "playing right now"].contains(where: value.contains)
+        }
+        return false
+    }
+
     static func read(_ call: ProposedTool) async throws -> String {
         switch call.name {
         case "gmail_search":
