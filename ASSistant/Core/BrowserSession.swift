@@ -119,42 +119,46 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         return url
     }
 
+    static func looksLikeChallenge(_ content: String) -> Bool {
+        let lowered = content.lowercased()
+        return [
+            "unusual traffic", "verify you are human", "verify that you are human",
+            "before you continue to google", "our systems have detected unusual",
+            "complete the captcha", "captcha challenge", "please verify you are a human",
+            "security check", "press and hold to confirm you are a human"
+        ].contains(where: lowered.contains)
+    }
+
     func search(_ query: String, site: String? = nil) async throws -> String {
         let trimmed = String(query.prefix(220)).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw BrowserFailure.badURL }
         let domain = (site ?? "").lowercased()
-        let specificSite = domain == "amazon" || domain == "amazon.com" ? "site:amazon.com " : ""
-        let terms = specificSite + trimmed
-        var failures: [String] = []
-        let engines: [(String, String)] = [
-            ("https://www.google.com/search", "q"),
-            ("https://www.bing.com/search", "q"),
-            ("https://duckduckgo.com/", "q")
-        ]
-        for (endpoint, key) in engines {
+        let terms = (domain == "amazon" || domain == "amazon.com" ? "site:amazon.com " : "") + trimmed
+        let engines = ["https://www.google.com/search", "https://www.bing.com/search",
+                       "https://duckduckgo.com/"]
+        var lastFailure = "Search pages were unavailable."
+        for base in engines {
             try Task.checkCancellation()
-            var components = URLComponents(string: endpoint)!
-            components.queryItems = [URLQueryItem(name: key, value: terms)]
+            var components = URLComponents(string: base)!
+            components.queryItems = [URLQueryItem(name: "q", value: terms)]
             guard let url = components.url else { continue }
             do {
                 let observation = try await navigate(url.absoluteString)
-                let lower = observation.lowercased()
-                let blocked = [
-                    "unusual traffic", "verify you are human",
-                    "captcha", "robot check", "before you continue to google",
-                    "automated queries", "challenge-platform"
-                ].contains(where: lower.contains)
-                if blocked {
-                    failures.append((url.host ?? "") + " requested verification")
+                if Self.looksLikeChallenge(observation) {
+                    lastFailure = "Search engine requested human verification."
                     continue
                 }
                 return observation
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
-                failures.append((url.host ?? "") + ": " + error.localizedDescription)
+                lastFailure = error.localizedDescription
+                continue
             }
         }
-        // Do not invent results if all providers challenge or fail.
-        throw BrowserFailure.unavailable
+        requestHuman("The search engines could not return an accessible result: " + lastFailure +
+            " Complete any security check, then return control to ASSistant.")
+        return "Human help required with live browser. " + lastFailure
     }
 
     func navigate(_ raw: String) async throws -> String {
