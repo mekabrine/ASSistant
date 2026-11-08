@@ -49,7 +49,7 @@ private struct AgentEditor: View {
     let isNew: Bool
     private let tools = ["reminder", "calendar", "contacts", "location", "clipboard",
                          "notification", "htmlapp", "web", "speak", "shortcuts", "sms",
-                         "phone", "gmail", "spotify"]
+                         "phone", "gmail", "spotify", "memory"]
 
     var body: some View {
         NavigationStack {
