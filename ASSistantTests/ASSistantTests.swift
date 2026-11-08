@@ -229,6 +229,7 @@ final class ASSistantTests: XCTestCase {
                                              messageID: msgID, chatID: chatID).isEmpty)
     }
 
+    @MainActor
     func testChatTitleCadenceAndFallback() {
         XCTAssertTrue(ChatTitleService.shouldRename(count: 2))
         XCTAssertTrue(ChatTitleService.shouldRename(count: 5))
