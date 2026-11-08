@@ -292,6 +292,9 @@ enum AgentEngine {
                 }
             } catch is CancellationError {
                 throw CancellationError()
+            } catch BrowserFailure.userTookControl {
+                onStatus("Waiting for you to finish browsing…")
+                observation = try await browser.waitForHandoff()
             } catch {
                 observation = "Browser operation failed: " + error.localizedDescription
             }
