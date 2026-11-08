@@ -47,6 +47,7 @@ struct ChatView: View {
     @State private var agentStatus = ""
     @State private var editingMessage: ChatMessage?
     @State private var showActivity = false
+    @State private var editingInlineApp: GeneratedApp?
     @State private var smsDraft: SMSDraft?
     @State private var smsProposal: ProposedTool?
 
@@ -74,6 +75,12 @@ struct ChatView: View {
                                                   onRegenerate: message.role == "assistant" ? { regenerate(message) } : nil,
                                                   onChoice: message.role == "assistant" ? { selection in sendText(selection) } : nil)
                                         .id(message.id)
+                                }
+                                ForEach(store.apps.filter { $0.chatID == current.id }) { app in
+                                    ChatHTMLAppCard(app: app,
+                                        onEdit: { editingInlineApp = app },
+                                        onPublish: { publishInlineApp(app) })
+                                        .id(app.id)
                                 }
                                 if isLoading {
                                     HStack(alignment: .top) {
@@ -224,6 +231,10 @@ struct ChatView: View {
             }
             .sheet(item: $buildPrompt) { prompt in
                 AppBuilderScreen(initialPrompt: prompt.text)
+                    .environmentObject(store)
+            }
+            .sheet(item: $editingInlineApp) { app in
+                AppBuilderScreen(initialPrompt: app.prompt, existing: app)
                     .environmentObject(store)
             }
             .sheet(isPresented: $cameraOpen) {
@@ -482,6 +493,54 @@ struct ChatView: View {
         }.value
     }
 
+    private func shouldBuildHTMLApp(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        return ["build me an app", "make me an app", "create an app",
+                "build an htmlapp", "make an htmlapp", "generate an html app",
+                "build a mini app", "create a mini app", "make a mini app",
+                "build me a website", "create a web app"].contains(where: lower.contains)
+    }
+
+    private func beginInlineHTMLApp(_ request: String, thread: ChatThread,
+                                    profile: ProviderProfile) {
+        guard appBuildTask == nil else { return }
+        appBuildTask = Task {
+            defer { appBuildTask = nil; autoBuildStatus = "" }
+            do {
+                autoBuildStatus = "Building your interactive HTMLApp preview in chat…"
+                var app = try await HTMLAppBuilder.generate(request: request, profile: profile)
+                try Task.checkCancellation()
+                app.chatID = thread.id
+                store.save(app)
+                _ = store.append(role: "assistant", text:
+                    "I built **\(app.title)** below. You can use its preview, edit the HTML, or explicitly publish and import it into HTMLApp.", to: thread)
+            } catch is CancellationError {
+                errorText = "HTMLApp draft generation was cancelled."
+            } catch {
+                errorText = "HTMLApp generation: " + error.localizedDescription
+            }
+        }
+    }
+
+    private func publishInlineApp(_ app: GeneratedApp) {
+        appBuildTask?.cancel()
+        appBuildTask = Task {
+            defer { appBuildTask = nil; autoBuildStatus = "" }
+            do {
+                autoBuildStatus = "Preparing HTMLApp import…"
+                let url: String
+                if let existing = app.sourceURL { url = existing }
+                else {
+                    url = try await HTMLPublisher.publish(app)
+                    var saved = app
+                    saved.sourceURL = url
+                    store.save(saved)
+                }
+                try await HTMLAppBuilder.openHTMLApp(url)
+            } catch { errorText = "HTMLApp publish/import: " + error.localizedDescription }
+        }
+    }
+
     private func beginAutomaticHTMLApp(_ request: String) {
         guard appBuildTask == nil else { return }
         guard let thread = current, let provider = store.provider(for: thread) else {
@@ -662,7 +721,9 @@ struct ChatView: View {
                             "The \(category) tool is disabled for this agent. Enable it in Settings → Agents.", to: thread)
                     }
                 }
-                if outcome.wantsHTMLApp {
+                if shouldBuildHTMLApp(userPrompt) {
+                    beginInlineHTMLApp(userPrompt, thread: thread, profile: profile)
+                } else if outcome.wantsHTMLApp {
                     suggestedAppPrompt = userPrompt
                     showAppDecision = true
                 }
