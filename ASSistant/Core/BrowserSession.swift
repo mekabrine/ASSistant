@@ -42,7 +42,7 @@ private final class WeakBrowserScriptHandler: NSObject, WKScriptMessageHandler {
 /// It exposes bounded page text and clickable links, not unrestricted JS execution.
 @MainActor
 final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
-    let id = UUID()
+    let id: UUID
     let web: WKWebView
     @Published var requiresHuman = false
     @Published var handoffReason = ""
@@ -67,7 +67,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var pending: CheckedContinuation<Void, Error>?
     private var navigationSequence = 0
 
-    override init() {
+    init(tabID: UUID = UUID()) {
+        self.id = tabID
         let config = WKWebViewConfiguration()
         // Shared persistent WebKit login state across browsers/chats, isolated
         // from Safari and from the user's separate Google/Spotify OAuth tokens.
