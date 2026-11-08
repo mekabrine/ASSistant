@@ -84,6 +84,7 @@ struct GeneratedApp: Codable, Identifiable, Hashable {
     var prompt: String
     var html: String
     var sourceURL: String?
+    var chatID: UUID? = nil
     var createdAt: Date = .now
     var updatedAt: Date = .now
     var version: Int = 1
