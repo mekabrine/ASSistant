@@ -194,4 +194,88 @@ final class ASSistantTests: XCTestCase {
                       "Spotify auth callback scheme must be in generated Info.plist")
     }
 
+    func testMemoryDirectoryTitlesCategoriesAndDates() {
+        let chat = ChatThread()
+        let agent = AgentProfile()
+        var favorite = MemoryItem(text: "I love navy blue work aprons", kind: "preference")
+        favorite.title = "Navy blue work aprons"
+        favorite.category = "Preferences"
+        var project = MemoryItem(text: "Our prototype uses iOS SwiftUI", kind: "project")
+        project.category = "Projects"
+        var secret = MemoryItem(text: "Private secret", kind: "fact", isSensitive: true)
+        secret.category = "Personal"
+        let entries = [favorite, project, secret]
+        let directory = MemoryDirectory.list(entries, chat: chat, agent: agent,
+                                              category: "Preferences", days: 30)
+        XCTAssertTrue(directory.contains("Navy blue work aprons"))
+        XCTAssertTrue(directory.contains(favorite.id.uuidString))
+        XCTAssertFalse(directory.contains("prototype"))
+        XCTAssertFalse(directory.contains("Private secret"))
+        let detail = MemoryDirectory.get(favorite.id.uuidString, memories: entries,
+                                         chat: chat, agent: agent)
+        XCTAssertTrue(detail.contains("I love navy blue work aprons"))
+        XCTAssertFalse(MemoryDirectory.get(secret.id.uuidString, memories: entries,
+                                           chat: chat, agent: agent).contains("Private secret"))
+    }
+
+    func testAutomaticPreferenceExtraction() {
+        let chatID = UUID(), msgID = UUID()
+        let items = MemoryEngine.candidates(from: "I love navy blue work aprons",
+                                            messageID: msgID, chatID: chatID)
+        XCTAssertEqual(items.first?.category, "Preferences")
+        XCTAssertEqual(items.first?.scope, "global")
+        XCTAssertNotNil(items.first?.title)
+        XCTAssertTrue(MemoryEngine.candidates(from: "My password is 123456",
+                                             messageID: msgID, chatID: chatID).isEmpty)
+    }
+
+    func testChatTitleCadenceAndFallback() {
+        XCTAssertTrue(ChatTitleService.shouldRename(count: 2))
+        XCTAssertTrue(ChatTitleService.shouldRename(count: 5))
+        XCTAssertTrue(ChatTitleService.shouldRename(count: 10))
+        XCTAssertFalse(ChatTitleService.shouldRename(count: 3))
+    }
+
+    func testRichMessageBlocksAndSafePreview() {
+        let fence = MessageFormatter.fence
+        let content = """
+        | Name | Price |
+        | --- | --- |
+        | Apron | 15 |
+
+        \(fence)swift
+        let n = 2
+        \(fence)
+        """
+        let parts = MessageFormatter.parse(content)
+        XCTAssertGreaterThanOrEqual(parts.count, 2)
+        XCTAssertTrue(MessageFormatter.allowedPreview("<html><body>Hi</body></html>"))
+        XCTAssertFalse(MessageFormatter.allowedPreview("<script>alert(1)</script>"))
+        XCTAssertFalse(MessageFormatter.allowedPreview("<img src=https://example.com/a>"))
+    }
+
+    @MainActor
+    func testBrowserChallengeDetectionAndMultipleSessions() {
+        XCTAssertTrue(BrowserSession.looksLikeChallenge("Verify that you are human"))
+        XCTAssertTrue(BrowserSession.looksLikeChallenge("Our systems have detected unusual traffic"))
+        XCTAssertFalse(BrowserSession.looksLikeChallenge("Navy blue apron in stock"))
+        let workspace = BrowserWorkspace()
+        let first = workspace.active.id
+        let second = workspace.newBrowser().id
+        XCTAssertNotEqual(first, second)
+        XCTAssertEqual(workspace.sessions.count, 2)
+        workspace.select(first)
+        XCTAssertEqual(workspace.active.id, first)
+        workspace.requestHuman("Enter a security code")
+        XCTAssertTrue(workspace.active.userControl)
+        workspace.takeBackControl()
+        XCTAssertFalse(workspace.active.userControl)
+    }
+
+    func testVoiceCallProgressIsBrief() {
+        let phrase = VoiceCallProgress.shortPhrase(for: "Browser: browser_follow")
+        XCTAssertNotNil(phrase)
+        XCTAssertLessThanOrEqual(phrase!.split(separator: " ").count, 8)
+    }
+
 }
