@@ -165,4 +165,15 @@ final class ASSistantTests: XCTestCase {
         XCTAssertThrowsError(try NativeActions.cleanPhone("123"))
     }
 
+    func testConnectedAccountLookupRequiresUserIntent() {
+        XCTAssertTrue(AccountAgentTools.userRequested("gmail",
+            prompt: "Search my Gmail for a delivery confirmation"))
+        XCTAssertTrue(AccountAgentTools.userRequested("spotify",
+            prompt: "What's now playing on Spotify?"))
+        XCTAssertFalse(AccountAgentTools.userRequested("gmail",
+            prompt: "What is the weather today?"))
+        XCTAssertFalse(AccountAgentTools.userRequested("spotify",
+            prompt: "Find me a navy blue apron on Amazon"))
+    }
+
 }
