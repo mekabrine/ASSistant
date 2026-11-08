@@ -39,7 +39,7 @@ struct AgentProfile: Codable, Identifiable, Hashable {
     var name: String = "General Assistant"
     var instructions: String = "Be useful, precise, and respect explicit user approval for real-world actions. Offer reusable HTMLApp apps only when a persistent interface would benefit the user."
     var providerID: UUID?
-    var allowedTools: [String] = ["reminder", "calendar", "contacts", "location", "clipboard", "notification", "htmlapp", "web", "shortcuts", "sms", "phone", "gmail", "spotify", "speak", "memory"]
+    var allowedTools: [String] = ["reminder", "calendar", "contacts", "location", "clipboard", "notification", "htmlapp", "web", "memory", "shortcuts", "sms", "phone", "gmail", "spotify", "speak", "memory"]
 }
 
 struct MemoryItem: Codable, Identifiable, Hashable {
