@@ -204,7 +204,7 @@ struct ChatView: View {
             }
             .sheet(isPresented: $showCallMode) {
                 if let id = chatID {
-                    CallModeView(chatID: id) { transcript in
+                    CallModeView(chatID: id, agentProgress: $agentStatus) { transcript in
                         sendText(transcript)
                     }
                     .environmentObject(store)
