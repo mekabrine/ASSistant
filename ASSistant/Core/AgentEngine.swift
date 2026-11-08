@@ -285,10 +285,10 @@ enum AgentEngine {
                 default:
                     observation = "Unsupported browser command."
                 }
-                if browser.active.requiresHuman {
-                    onStatus("Waiting for your browser verification…")
+                if browser.active.requiresHuman || browser.active.userControl {
+                    onStatus("Waiting for your browser interaction…")
                     let resumed = try await browser.waitForHandoff()
-                    observation = "Human completed page interaction:\n" + resumed
+                    observation = "Human returned control after page interaction:\n" + resumed
                 }
             } catch is CancellationError {
                 throw CancellationError()
