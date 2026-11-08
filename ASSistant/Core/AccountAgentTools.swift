@@ -4,7 +4,7 @@ import Foundation
 /// all network requests are directed to official Google/Spotify API hosts.
 @MainActor
 enum AccountAgentTools {
-    static func userRequested(_ category: String, prompt: String) -> Bool {
+    nonisolated static func userRequested(_ category: String, prompt: String) -> Bool {
         let value = prompt.lowercased()
         if category == "gmail" {
             return ["gmail", "email", "e-mail", "inbox", "my mail",
