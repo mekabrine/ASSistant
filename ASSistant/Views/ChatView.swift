@@ -617,6 +617,11 @@ struct ChatView: View {
         browser.resumeOnNextMessage()
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         let message = store.append(role: "user", text: text, to: thread)
+        let savedTurnCount = store.messages(in: thread.id).count
+        if savedTurnCount >= 5 && savedTurnCount % 5 == 0,
+           let titleModel = store.provider(for: thread) {
+            Task { await updateChatTitle(threadID: thread.id, model: titleModel) }
+        }
         if thread.title == "New Chat" {
             var renamed = thread
             renamed.title = ChatTitleService.fallback(text)
