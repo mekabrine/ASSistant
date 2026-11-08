@@ -2,11 +2,26 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var selectedChatID: UUID?
+    @State private var chatSidebar: NavigationSplitViewVisibility = .all
 
     var body: some View {
         TabView {
-            ChatView()
-                .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right.fill") }
+            NavigationSplitView(columnVisibility: $chatSidebar) {
+                ChatSidebarView(selectedChatID: $selectedChatID)
+                    .environmentObject(store)
+                    .navigationSplitViewColumnWidth(min: 250, ideal: 285, max: 360)
+            } detail: {
+                ChatView(chatID: $selectedChatID) {
+                    withAnimation(.easeInOut(duration: 0.22)) {
+                        chatSidebar = chatSidebar == .all ? .detailOnly : .all
+                    }
+                }
+                .environmentObject(store)
+            }
+            .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right.fill") }
+
             TasksView()
                 .tabItem { Label("Tasks", systemImage: "checkmark.circle.fill") }
             AppsView()
@@ -15,6 +30,9 @@ struct RootView: View {
                 .tabItem { Label("Memory", systemImage: "brain.head.profile") }
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
+        }
+        .onAppear {
+            if horizontalSizeClass == .compact { chatSidebar = .detailOnly }
         }
         .tint(.cyan)
         .toolbarBackground(.regularMaterial, for: .tabBar)
