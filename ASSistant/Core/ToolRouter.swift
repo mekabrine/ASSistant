@@ -20,23 +20,23 @@ struct ProposedTool: Codable, Identifiable {
     var memoryID: String?
     var limit: Int?
     var browserID: String?
-    var category: String?
-    var memoryID: String?
     var days: Int?
 
-    enum CodingKeys: String, CodingKey { case name, title, details, text, at, end, url, linkID, site, recipient, subject, query, uri, category, period, memoryID, limit, browserID, category, memoryID, days }
+    enum CodingKeys: String, CodingKey {
+        case name, title, details, text, at, end, url, linkID, site,
+             recipient, subject, query, uri, category, period, memoryID,
+             limit, browserID, days
+    }
 }
 
 enum ToolRouter {
-    static let names = [
+    static let names: Set<String> = [
         "create_reminder", "create_calendar_event", "schedule_notification",
         "get_location", "count_contacts", "copy_text", "speak_text", "create_task",
         "browser_search", "browser_open", "browser_read", "browser_follow",
         "browser_fill_search", "browser_submit_search", "browser_scroll",
-        "browser_new", "browser_switch", "browser_request_handoff",
-        "memory_list", "memory_get", "memory_search", "memory_save",
         "browser_new", "browser_switch", "browser_tabs", "browser_request_handoff",
-        "memory_list", "memory_get",
+        "memory_list", "memory_get", "memory_search", "memory_save",
         "gmail_search", "gmail_read", "spotify_search", "spotify_now_playing",
         "spotify_playlists", "gmail_send",
         "spotify_play", "spotify_pause", "spotify_next", "spotify_previous",
@@ -53,12 +53,11 @@ enum ToolRouter {
         case "gmail_search", "gmail_read", "gmail_send": return "gmail"
         case "spotify_search", "spotify_now_playing", "spotify_playlists",
              "spotify_play", "spotify_pause", "spotify_next", "spotify_previous": return "spotify"
-        case "memory_list", "memory_get": return "memory"
+        case "memory_save", "memory_list", "memory_get", "memory_search": return "memory"
         case "run_shortcut": return "shortcuts"
         case "place_call": return "phone"
         case "compose_sms": return "sms"
         case "find_contacts", "count_contacts": return "contacts"
-        case "memory_save", "memory_list", "memory_get", "memory_search": return "memory"
         case "create_reminder": return "reminder"
         case "create_calendar_event": return "calendar"
         case "schedule_notification": return "notification"
