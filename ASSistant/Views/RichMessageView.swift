@@ -113,7 +113,8 @@ struct RichMessageView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(MessageFormatter.parse(content).enumerated()), id: \.offset) { _, section in
+            ForEach(Array(MessageFormatter.parse(content).enumerated()), id: \.offset) { part in
+                let section = part.element
                 switch section {
                 case .prose(let text):
                     Text((try? AttributedString(markdown: text)) ?? AttributedString(text))
@@ -156,14 +157,17 @@ struct RichMessageView: View {
                     ScrollView(.horizontal) {
                         Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
                             GridRow {
-                                ForEach(Array(columns.enumerated()), id: \.offset) { _, label in
+                                ForEach(Array(columns.enumerated()), id: \.offset) { column in
+                                    let label = column.element
                                     Text(label).font(.caption).fontWeight(.bold)
                                 }
                             }
                             Divider()
-                            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                            ForEach(Array(rows.enumerated()), id: \.offset) { item in
+                                let row = item.element
                                 GridRow {
-                                    ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
+                                    ForEach(Array(row.enumerated()), id: \.offset) { item in
+                                        let cell = item.element
                                         Text(cell).font(.caption).textSelection(.enabled)
                                     }
                                 }
