@@ -454,6 +454,7 @@ struct BrowserFullScreenView: View {
     @ObservedObject var workspace: BrowserWorkspace
     @Environment(\.dismiss) private var dismiss
     @State private var confirmClearLogins = false
+    @State private var confirmCloseChatTabs = false
 
     var body: some View {
         NavigationStack {
@@ -520,6 +521,9 @@ struct BrowserFullScreenView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Menu {
+                        Button("Close all tabs in this chat", role: .destructive) {
+                            confirmCloseChatTabs = true
+                        }
                         Button("Clear browser sign-ins and website data", role: .destructive) {
                             confirmClearLogins = true
                         }
@@ -533,6 +537,15 @@ struct BrowserFullScreenView: View {
                         dismiss()
                     }
                 }
+            }
+            .confirmationDialog("Close this chat's browsers?",
+                                isPresented: $confirmCloseChatTabs) {
+                Button("Close all chat browser tabs", role: .destructive) {
+                    workspace.closeCurrentChatTabs()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Only tabs and saved page state for this chat are cleared. Website logins in other chats remain available.")
             }
             .confirmationDialog("Clear all browser logins?", isPresented: $confirmClearLogins,
                                 titleVisibility: .visible) {
