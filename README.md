@@ -2,8 +2,26 @@
 
 Native SwiftUI assistant integrating user-configured AI APIs, private local-first data, CloudKit synchronization, contextual memory, native device tools and [HTMLApp](https://github.com/mekabrine/htmlapp) installation.
 
-**Status: source-code prototype; a manually triggered GitHub Actions build on Nov 3 succeeded, but the user's installed app reportedly crashes immediately on launch. Startup fixes committed Nov 7 are NOT yet device-verified.** A successful install, permission flow, iCloud synchronization or IPA build must not be assumed until device tests pass.
+**Status: source-code prototype; a manually triggered GitHub Actions build completed successfully on Nov 8 before the browser/voice/sidebar expansion, but the new changes have not been built or device-verified. The user previously reported a crash on launch.** A successful install, permission flow, iCloud synchronization or IPA build must not be assumed until device tests pass.
 
+
+## November 8 browser, memory, voice and chat redesign
+
+These changes are **committed source code and still require a new Xcode/iOS simulator build**.
+
+- **Passively view the AI browser:** Full-screen WebKit browser can be opened without taking control. Scrolling doesn't interrupt the agent; tapping links/buttons or typing in page controls hands you control. A prominent **Done — Return control to AI** button restores AI navigation. Sending a new message also releases manual browser control.
+- **Human verification pause:** When an approved web task encounters an account sign-in, CAPTCHA, two-factor verification or similar protected step, the assistant can pause and request that you complete it. The AI never receives the password, form input values, cookies or security codes. Search engine challenge fallback tries **Google → Bing → DuckDuckGo**, not automated CAPTCHA bypass.
+- **Multi-tab browser:** A small browser dock in chat expands to a full-screen list of separate browser tabs. Browsers share persistent WebKit website data across conversations; they do **not** automatically share Safari accounts. Settings lets you erase all in-app browser website storage. Agent actions select the relevant tab as they work. Signed-in page *content* may still be read by a web-enabled agent and relayed to your chosen model, so only enable web access on accounts you trust.
+- **Memory directory:** Automatically saves additional explicit user preferences, likes/dislikes, routines, goals, work and project facts, with conservative sensitive-data screening. Memories have categories, short labels, timestamps, stable IDs, and local-only index/search/detail tools. The AI can request all short memory titles or filter by category and recent days, then ask for the full text by ID. Sensitive or out-of-scope memories are excluded.
+- **Chat sidebar:** Responsive \`NavigationSplitView\` with searchable groups, pinned chats, create, rename, archive and delete. Collapsible on iPhone and iPad.
+- **Automatically titled conversations:** Initial title from the first message, with optional low-cost model selected in Settings for automatic renaming after early messages and every fifth message. Title prompt uses at most 50 messages.
+- **More expressive answers:** Markdown emphasis and links, scrollable syntax-preserving code blocks, Markdown tables, compact multiple-choice buttons, and deliberately constrained static HTML snippets. HTML previews block scripts and external links.
+- **In-chat HTMLApp generation:** Agent or user can request standalone HTMLApp creation without leaving chat. A generated app card shows an interactive preview and Edit/Publish/Import actions. Public HTTPS publishing still requires explicit user approval and uses HTMLApp's existing \`htmlapp://import?url=...\` contract.
+- **Free on-device speech:** Default dictation option is **WhisperKit on device**, with first-use model download, no dedicated transcription API key and no promise of an unlimited free cloud endpoint. Cloud Whisper-compatible BYO API and Apple Speech remain switchable in Settings. On-device model support/performance depend on phone resources and package compatibility.
+- **Call mode agent narration:** Brief spoken progress phrases accompany browser actions while the call view remains focused on voice, followed by a normal spoken answer.
+- **Chat attachment tray:** Expandable + button for Files, selected Photos and iOS Camera. Current images are processed with Vision OCR; general vision-model photo understanding is not yet available.
+
+The privacy limits, browser login persistence and foreground iOS execution constraints remain important. No normal third-party app can silently bypass login/CAPTCHA or complete arbitrary system actions without appropriate permissions.
 
 ## November 7 feature expansion (source code, not device-verified)
 
@@ -61,7 +79,7 @@ Google and Spotify require app registration and OAuth client IDs to work; the so
 
 ## Prototype limitations and incomplete features
 
-- The original source **built successfully** using the user-triggered Actions run on November 3, but **crashes on launch** were reported. The November 7 fixes have not been compiled or tested. The exact crash requires a device crash log; see `docs/CLAUDE_SPEC_ADOPTION.md`.
+- An earlier version **built successfully** in GitHub Actions on November 8, but **crashes on launch** were previously reported. Subsequent browser, voice, memory and sidebar changes have not been built or tested. The exact crash requires a device crash log; see `docs/CLAUDE_SPEC_ADOPTION.md`.
 - CloudKit sync is wired into persistence, but cross-device conflict handling, CloudKit production schema deployment, and entitlement provisioning are not validated.
 - Conversation message bodies and HTML app snapshots are stored as generic JSON blobs in Core Data; very large items may exceed CloudKit record limits. Migrate large attachments to CloudKit assets or bounded file storage.
 - Full visual image-model requests, true background autonomous execution, browser automation, MCP servers, complete multimodal tool calling, multi-agent collaboration, a marketplace and push server are not part of this prototype. Scheduled **local notifications** work without a cloud worker, but iOS will not run arbitrary AI agents continually in the background.
