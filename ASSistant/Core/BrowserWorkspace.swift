@@ -18,6 +18,45 @@ final class BrowserWorkspace: ObservableObject {
     var current: BrowserSession {
         tabs.first(where: { $0.id == selectedID }) ?? tabs[0]
     }
+    var active: BrowserSession { current }
+
+    @discardableResult
+    func newBrowser() -> BrowserSession { newTab() }
+
+    func list() -> String {
+        tabs.map { tab in
+            "Browser ID: \(tab.id.uuidString) | \(tab.title) | \(tab.currentURL) | " +
+            (tab.id == selectedID ? "CURRENT" : "background")
+        }.joined(separator: "\n")
+    }
+
+    @discardableResult
+    func choose(_ rawID: String?) throws -> BrowserSession {
+        guard let rawID, let id = UUID(uuidString: rawID),
+              let tab = tabs.first(where: { $0.id == id }) else {
+            throw BrowserFailure.invalidLink
+        }
+        selectedID = id
+        return tab
+    }
+
+    func requestHuman(_ reason: String) {
+        current.waitingForHuman = true
+        current.handoffReason = reason
+        current.userControl = true
+        current.visible = true
+        fullScreen = true
+    }
+
+    func waitForHandoff() async throws -> String {
+        let tab = current
+        guard tab.waitingForHuman else { return "" }
+        fullScreen = true
+        try await tab.requestHuman(reason: tab.handoffReason.isEmpty
+                                   ? "Please complete sign-in or verification." : tab.handoffReason)
+        return try await tab.read()
+    }
+
 
     func choose(_ id: UUID) {
         guard tabs.contains(where: { $0.id == id }) else { return }
