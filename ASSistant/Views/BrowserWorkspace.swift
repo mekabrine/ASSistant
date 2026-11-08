@@ -195,6 +195,7 @@ private struct BrowserDockContent: View {
 struct BrowserFullScreenView: View {
     @ObservedObject var workspace: BrowserWorkspace
     @Environment(\.dismiss) private var dismiss
+    @State private var confirmClearLogins = false
 
     var body: some View {
         NavigationStack {
@@ -252,12 +253,30 @@ struct BrowserFullScreenView: View {
             .navigationTitle("Live Browsers")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Menu {
+                        Button("Clear browser sign-ins and website data", role: .destructive) {
+                            confirmClearLogins = true
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Close") {
                         workspace.fullScreen = false
                         dismiss()
                     }
                 }
+            }
+            .confirmationDialog("Clear all browser logins?", isPresented: $confirmClearLogins,
+                                titleVisibility: .visible) {
+                Button("Clear website logins and cookies", role: .destructive) {
+                    Task { await workspace.clearBrowserLogins() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This signs you out of websites within ASSistant across all browser tabs. It does not affect Safari or separately connected Google/Spotify OAuth accounts.")
             }
         }
     }
