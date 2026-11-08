@@ -126,27 +126,28 @@ struct ChatSidebarView: View {
         .contentShape(Rectangle())
         .onTapGesture { selectedChatID = chat.id }
         .contextMenu {
-            Button("Rename", systemImage: "pencil") {
+            Button {
                 proposedName = chat.title
                 renameTarget = chat
-            }
-            Button(pinned.contains(chat.id.uuidString) ? "Unpin" : "Pin",
-                   systemImage: "pin") {
+            } label: { Label("Rename", systemImage: "pencil") }
+            Button {
                 var all = pinned
                 if all.contains(chat.id.uuidString) { all.remove(chat.id.uuidString) }
                 else { all.insert(chat.id.uuidString) }
                 pinnedIDs = all.sorted().joined(separator: ",")
+            } label: {
+                Label(pinned.contains(chat.id.uuidString) ? "Unpin" : "Pin", systemImage: "pin")
             }
-            Button("Archive", systemImage: "archivebox") {
+            Button {
                 var copy = chat
                 copy.archived = true
                 store.save(copy)
                 if selectedChatID == chat.id { selectedChatID = nil }
-            }
-            Button("Delete", systemImage: "trash", role: .destructive) {
+            } label: { Label("Archive", systemImage: "archivebox") }
+            Button(role: .destructive) {
                 store.delete(chat.id, kind: "chat")
                 if selectedChatID == chat.id { selectedChatID = nil }
-            }
+            } label: { Label("Delete", systemImage: "trash") }
         }
     }
 }
