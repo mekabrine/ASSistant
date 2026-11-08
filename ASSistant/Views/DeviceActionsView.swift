@@ -42,14 +42,16 @@ struct DeviceActionsView: View {
                     TextEditor(text: $messageBody)
                         .frame(minHeight: 92)
                     Button {
-                        do {
-                            guard MFMessageComposeViewController.canSendText() else {
-                                throw NativeActionError.messagesUnavailable
+                        Task {
+                            do {
+                                guard MFMessageComposeViewController.canSendText() else {
+                                    throw NativeActionError.messagesUnavailable
+                                }
+                                let destination = try await NativeActions.resolvePhone(phoneNumber)
+                                smsDraft = SMSDraft(recipient: destination, message: messageBody)
+                            } catch {
+                                status = error.localizedDescription
                             }
-                            smsDraft = SMSDraft(recipient: try NativeActions.cleanPhone(phoneNumber),
-                                                message: messageBody)
-                        } catch {
-                            status = error.localizedDescription
                         }
                     } label: { Label("Compose SMS / iMessage", systemImage: "message.fill") }
                         .disabled(phoneNumber.isEmpty || messageBody.isEmpty)
