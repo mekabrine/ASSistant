@@ -14,9 +14,15 @@ enum MemoryDirectory {
                      category: String? = nil, days: Int? = nil, limit: Int = 100) -> String {
         let filtered = memories.filter { memory in
             guard allowed(memory, chat: chat, agent: agent) else { return false }
-            if let category, !category.isEmpty && category.lowercased() != "all",
-               (memory.category ?? memory.kind).localizedCaseInsensitiveCompare(category) != .orderedSame {
-                return false
+            if let category, !category.isEmpty && category.lowercased() != "all" {
+                let wanted = category.lowercased()
+                let label = (memory.category ?? memory.kind).lowercased()
+                let kind = memory.kind.lowercased()
+                if wanted != kind && wanted != label &&
+                   wanted.trimmingCharacters(in: CharacterSet(charactersIn: "s")) !=
+                    label.trimmingCharacters(in: CharacterSet(charactersIn: "s")) {
+                    return false
+                }
             }
             if let days, (1...3650).contains(days),
                memory.updatedAt < Date().addingTimeInterval(-Double(days) * 86400) { return false }
