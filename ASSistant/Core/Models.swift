@@ -45,6 +45,8 @@ struct AgentProfile: Codable, Identifiable, Hashable {
 struct MemoryItem: Codable, Identifiable, Hashable {
     var id: UUID = UUID()
     var text: String
+    var title: String? = nil
+    var category: String? = nil
     var kind: String = "fact"
     var scope: String = "global"
     var sourceMessageID: UUID?
