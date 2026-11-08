@@ -24,6 +24,7 @@ struct SettingsView: View {
     @AppStorage("sttRequireKey") private var sttRequireKey = true
     @AppStorage("cloudSyncEnabled") private var cloudSyncEnabled = false
     @AppStorage("autoSummaryEnabled") private var autoSummaryEnabled = true
+    @AppStorage("agentMaxSteps") private var agentMaxSteps = 10
     @AppStorage("chatTitleProviderID") private var chatTitleProviderID = ""
     @AppStorage("chatTitleModel") private var chatTitleModel = ""
 
@@ -116,6 +117,11 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled(true)
                     Text("Names are refreshed when a chat begins and approximately every five messages, using up to the last 50 turns. Pick a cheap/small model supported by your provider; title generation makes additional API requests.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Section("Agent autonomy") {
+                    Stepper("Maximum agent tool steps: \(agentMaxSteps)", value: $agentMaxSteps, in: 3...20)
+                    Text("Allows more browser, account and memory lookups per request, while keeping a finite limit. Additional model tool calls may increase API costs; actions affecting accounts still require approval.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Context and memory") {
