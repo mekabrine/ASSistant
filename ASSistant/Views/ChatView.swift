@@ -69,7 +69,8 @@ struct ChatView: View {
                                 ForEach(currentMessages) { message in
                                     MessageBubble(message: message,
                                                   onEdit: message.role == "user" ? { editingMessage = message } : nil,
-                                                  onRegenerate: message.role == "assistant" ? { regenerate(message) } : nil)
+                                                  onRegenerate: message.role == "assistant" ? { regenerate(message) } : nil,
+                                                  onChoice: message.role == "assistant" ? { selection in sendText(selection) } : nil)
                                         .id(message.id)
                                 }
                                 if isLoading {
@@ -669,6 +670,7 @@ private struct MessageBubble: View {
     let message: ChatMessage
     let onEdit: (() -> Void)?
     let onRegenerate: (() -> Void)?
+    let onChoice: ((String) -> Void)?
     private var isUser: Bool { message.role == "user" }
 
     var body: some View {
@@ -691,10 +693,7 @@ private struct MessageBubble: View {
                         .font(.caption2)
                         .foregroundStyle(isUser ? Color.white.opacity(0.65) : Color.secondary)
                 }
-                Text((try? AttributedString(markdown: message.content))
-                     ?? AttributedString(message.content))
-                    .font(.body)
-                    .textSelection(.enabled)
+                RichMessageView(content: message.content, onChoice: onChoice)
                     .tint(isUser ? .white : .blue)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
