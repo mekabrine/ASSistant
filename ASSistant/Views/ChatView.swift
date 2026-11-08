@@ -25,6 +25,8 @@ struct ChatView: View {
         self.toggleSidebar = toggleSidebar
     }
     @State private var composer = ""
+    @State private var draftChatID: UUID?
+    @State private var draftSaveTask: Task<Void, Never>?
     @State private var streaming = ""
     @State private var errorText = ""
     @State private var isLoading = false
@@ -325,10 +327,22 @@ struct ChatView: View {
             .onDisappear {
                 speech.stop()
                 if !showCallMode { whisper.cancel() }
+                if let id = draftChatID { ChatDraftStore.put(composer, for: id) }
             }
-            .onAppear { ensureChat() }
+            .onAppear {
+                ensureChat()
+                if draftChatID != chatID {
+                    draftChatID = chatID
+                    if let id = chatID { composer = ChatDraftStore.get(id) }
+                }
+            }
             .onChange(of: store.database.ready) { _ in ensureChat() }
             .onChange(of: chatID) { value in
+                draftSaveTask?.cancel()
+                if let previous = draftChatID {
+                    ChatDraftStore.put(composer, for: previous)
+                }
+                draftChatID = value
                 if isLoading {
                     task?.cancel()
                     activeRequestID = UUID()
@@ -338,8 +352,17 @@ struct ChatView: View {
                 }
                 browser.activateChat(value)
                 attachmentsExpanded = false
-                composer = ""
+                composer = value.map(ChatDraftStore.get) ?? ""
                 errorText = ""
+            }
+            .onChange(of: composer) { value in
+                draftSaveTask?.cancel()
+                guard let id = draftChatID else { return }
+                draftSaveTask = Task {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    guard !Task.isCancelled else { return }
+                    ChatDraftStore.put(value, for: id)
+                }
             }
         }
     }
@@ -624,7 +647,6 @@ struct ChatView: View {
     private func newChat() {
         guard store.database.ready else { return }
         chatID = store.createChat().id
-        composer = ""
         errorText = ""
     }
 
@@ -632,6 +654,7 @@ struct ChatView: View {
         let value = composer.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return }
         composer = ""
+        if let id = chatID { ChatDraftStore.remove(id) }
         sendText(value)
     }
 
