@@ -9,6 +9,7 @@ struct CallModeView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let chatID: UUID
+    @Binding var agentProgress: String
     let onSend: (String) -> Void
 
     @StateObject private var whisper = WhisperRecorder()
@@ -25,6 +26,7 @@ struct CallModeView: View {
     @State private var errorText = ""
     @State private var pulse = false
     @State private var lastObservedAnswer: UUID?
+    @State private var lastSpokenProgress = ""
 
     private var profile: ProviderProfile? {
         guard let thread = store.chats.first(where: { $0.id == chatID }) else { return nil }
@@ -179,6 +181,16 @@ struct CallModeView: View {
             whisper.onAutoStop = { Task { await finishTurn() } }
             Task { await beginListening() }
         }
+        .onChange(of: agentProgress) { value in
+            guard connected && awaitingAnswer && !muted,
+                  let phrase = VoiceCallProgress.shortPhrase(for: value),
+                  phrase != lastSpokenProgress else { return }
+            lastSpokenProgress = phrase
+            displayState = phrase
+            Task {
+                await speaker.speak(phrase)
+            }
+        }
         .onChange(of: store.messages.count) { _ in
             guard connected && awaitingAnswer,
                   let latest = store.messages(in: chatID).last,
@@ -188,7 +200,7 @@ struct CallModeView: View {
             lastAssistantSaid = latest.content
             displayState = "ASSistant speaking"
             Task {
-                await speaker.speak(latest.content)
+                await speaker.speak(VoiceCallProgress.spokenReply(latest.content))
                 if connected && !muted { await beginListening() }
             }
         }
