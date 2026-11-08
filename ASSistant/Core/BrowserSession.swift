@@ -61,6 +61,9 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published var progress: Double = 0
     @Published var thumbnail: UIImage?
 
+    var onPageUpdated: (() -> Void)?
+    var pendingRestoredScrollY: CGFloat?
+
     private var pending: CheckedContinuation<Void, Error>?
     private var navigationSequence = 0
 
@@ -280,6 +283,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                                placeholder: $0["placeholder"] ?? "")
             }
             status = "Page ready"
+            onPageUpdated?()
             let lowerText = pageText.lowercased()
             let needsPassword = controls.contains(where: { $0.inputType == "password" })
             let needsCode = controls.contains(where: { $0.kind == "input" }) &&
@@ -450,6 +454,17 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         progress = 1
         currentURL = webView.url?.absoluteString ?? currentURL
         title = webView.title ?? title
+        onPageUpdated?()
+        if let scrollY = pendingRestoredScrollY {
+            pendingRestoredScrollY = nil
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 320_000_000)
+                guard let self else { return }
+                self.web.scrollView.setContentOffset(
+                    CGPoint(x: 0, y: max(0, scrollY)), animated: false
+                )
+            }
+        }
         if let waiter = pending {
             pending = nil
             waiter.resume()
