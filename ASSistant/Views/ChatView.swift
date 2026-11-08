@@ -36,6 +36,7 @@ struct ChatView: View {
     @State private var pendingTool: ProposedTool?
     @State private var toolAlert = false
     @State private var task: Task<Void, Never>?
+    @State private var activeRequestID = UUID()
     @AppStorage("autoSummaryEnabled") private var autoSummaryEnabled = true
     @StateObject private var speech = SpeechRecorder()
     @State private var selectedPhoto: PhotosPickerItem?
@@ -603,6 +604,7 @@ struct ChatView: View {
         guard let thread = current else { return }
         if isLoading {
             task?.cancel()
+            activeRequestID = UUID()
             browser.resumeOnNextMessage()
             isLoading = false
             streaming = ""
@@ -683,6 +685,8 @@ struct ChatView: View {
                                            memories: store.memories, summaries: store.summaries)
         store.lastDiagnostic = context.diagnostic
         isLoading = true
+        let requestID = UUID()
+        activeRequestID = requestID
         task = Task {
             do {
                 let outcome = try await AgentEngine.run(
@@ -693,17 +697,22 @@ struct ChatView: View {
                     chat: thread, agent: store.agent(for: thread), memories: store.memories,
                     browser: browser,
                     onStatus: { status in
+                        guard activeRequestID == requestID else { return }
                         agentStatus = status
                         streaming = ""
                     },
                     onDelta: { piece in
+                        guard activeRequestID == requestID else { return }
                         if streaming.count < 24000 { streaming += piece }
                     },
                     onBrowserStep: { name, observation in
+                        guard activeRequestID == requestID else { return }
                         store.save(ToolAudit(tool: name, detail: userPrompt,
                                              approved: true, result: observation))
                     }
                 )
+                try Task.checkCancellation()
+                guard activeRequestID == requestID else { return }
                 _ = store.append(role: "assistant", text: outcome.text, to: thread)
                 let count = store.messages(in: thread.id).count
                 if ChatTitleService.shouldRename(count: count) {
@@ -727,14 +736,15 @@ struct ChatView: View {
                 }
                 if autoSummaryEnabled { await summarizeIfNeeded(thread: thread, profile: profile) }
             } catch is CancellationError {
-                if !streaming.isEmpty, !streaming.contains("<assistant_tool>") {
+                if activeRequestID == requestID,
+                   !streaming.isEmpty, !streaming.contains("<assistant_tool>") {
                     _ = store.append(role: "assistant", text:
                         streaming + "\n[Interrupted]", to: thread)
                 }
             } catch {
-                errorText = error.localizedDescription
+                if activeRequestID == requestID { errorText = error.localizedDescription }
             }
-            if !Task.isCancelled {
+            if !Task.isCancelled && activeRequestID == requestID {
                 isLoading = false
                 agentStatus = ""
                 streaming = ""
