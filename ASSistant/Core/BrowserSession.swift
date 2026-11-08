@@ -29,8 +29,12 @@ enum BrowserFailure: LocalizedError {
 /// Unlike the uploaded desktop Python/Playwright script, this runs on iOS 16.
 /// It exposes bounded page text and clickable links, not unrestricted JS execution.
 @MainActor
-final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
+final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     let web: WKWebView
+    let id = UUID()
+    @Published var requiresHuman = false
+    @Published var handoffReason = ""
+    @Published var activeAgent = false
     @Published var visible = false
     @Published var expanded = false
     @Published var userControl = false
@@ -49,15 +53,51 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     override init() {
         let config = WKWebViewConfiguration()
-        // Ephemeral cookies: a user may log in while taking control, but the
-        // assistant must not gain persistent access to Safari account cookies.
-        config.websiteDataStore = .nonPersistent()
+        // Shared persistent WebKit login state across browsers/chats, isolated
+        // from Safari and from the user's separate Google/Spotify OAuth tokens.
+        config.websiteDataStore = .default()
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         web = WKWebView(frame: .zero, configuration: config)
         super.init()
         web.navigationDelegate = self
         web.uiDelegate = self
+        config.userContentController.add(self, name: "assistantUserInteraction")
+        config.userContentController.addUserScript(WKUserScript(source: """
+        document.addEventListener('click',function(e){
+          if(window.__assistantAutomation)return;
+          const interactive=e.target.closest('a,button,input,textarea,select,[role="button"],[contenteditable="true"]');
+          if(interactive)window.webkit.messageHandlers.assistantUserInteraction.postMessage('tap');
+        },true);
+        document.addEventListener('input',function(e){
+          if(!window.__assistantAutomation)
+            window.webkit.messageHandlers.assistantUserInteraction.postMessage('typing');
+        },true);
+        """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         web.allowsBackForwardNavigationGestures = true
+    }
+
+    func userContentController(_ userContentController: WKUserContentController,
+                               didReceive message: WKScriptMessage) {
+        guard message.name == "assistantUserInteraction" else { return }
+        userControl = true
+        if !requiresHuman { handoffReason = "You are interacting with this page." }
+        status = "You are in control"
+    }
+
+    func requestHuman(_ reason: String) {
+        handoffReason = String(reason.prefix(220))
+        requiresHuman = true
+        userControl = true
+        visible = true
+        expanded = true
+        status = "Action needed"
+    }
+
+    func returnControl() {
+        userControl = false
+        requiresHuman = false
+        handoffReason = ""
+        status = "AI can continue"
     }
 
     static func safeURL(_ raw: String) -> URL? {
@@ -110,7 +150,6 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         guard let url = Self.safeURL(raw) else { throw BrowserFailure.badURL }
         guard pending == nil else { throw BrowserFailure.busy }
         visible = true
-        expanded = false
         status = "Opening " + (url.host ?? "website")
         lastError = ""
         navigationSequence += 1
@@ -220,9 +259,12 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         args => {
           const el=document.querySelector('[data-assistant-control="'+args.id+'"]');
           if(!el || (el.type!=='search'&&el.type!=='text')) return false;
-          el.focus();el.value=args.value;
-          el.dispatchEvent(new Event('input',{bubbles:true}));
-          el.dispatchEvent(new Event('change',{bubbles:true}));
+          window.__assistantAutomation=true;
+          try {
+            el.focus();el.value=args.value;
+            el.dispatchEvent(new Event('input',{bubbles:true}));
+            el.dispatchEvent(new Event('change',{bubbles:true}));
+          } finally { window.__assistantAutomation=false; }
           return true;
         }
         """#
@@ -256,7 +298,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
           const action=(form?.action||'').toLowerCase();
           if(!form || !(action.includes('/search') || action.includes('/s?')
               || action.includes('/s') || action.includes('google.com'))) return false;
-          element.click();
+          window.__assistantAutomation=true;
+          try { element.click(); } finally { window.__assistantAutomation=false; }
           return true;
         }
         """#
@@ -317,7 +360,9 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             pending = nil
             waiter.resume()
         }
-        Task { @MainActor [weak self] in _ = try? await self?.read() }
+        if !userControl {
+            Task { @MainActor [weak self] in _ = try? await self?.read() }
+        }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
