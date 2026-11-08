@@ -4,6 +4,7 @@ import SwiftUI
 struct ChatSidebarView: View {
     @EnvironmentObject private var store: AppStore
     @Binding var selectedChatID: UUID?
+    var onSelect: (() -> Void)? = nil
     @State private var search = ""
     @State private var renameTarget: ChatThread?
     @State private var proposedName = ""
@@ -26,7 +27,7 @@ struct ChatSidebarView: View {
         case "Today": return calendar.isDateInToday(date)
         case "Yesterday": return calendar.isDateInYesterday(date)
         case "This week":
-            return date > Calendar.current.date(byAdding: .day, value: -7, to: .now)!
+            return date > (Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .distantPast)
                 && !calendar.isDateInToday(date) && !calendar.isDateInYesterday(date)
         default:
             return date <= Calendar.current.date(byAdding: .day, value: -7, to: .now)!
@@ -39,6 +40,7 @@ struct ChatSidebarView: View {
                 Button {
                     let chat = store.createChat()
                     selectedChatID = chat.id
+                    onSelect?()
                 } label: {
                     HStack(spacing: 9) {
                         Image(systemName: "plus.square.fill")
@@ -88,6 +90,7 @@ struct ChatSidebarView: View {
                 Button {
                     let chat = store.createChat()
                     selectedChatID = chat.id
+                    onSelect?()
                 } label: {
                     Image(systemName: "square.and.pencil")
                 }
@@ -124,7 +127,10 @@ struct ChatSidebarView: View {
         .padding(.vertical, 4)
         .tag(chat.id)
         .contentShape(Rectangle())
-        .onTapGesture { selectedChatID = chat.id }
+        .onTapGesture {
+            selectedChatID = chat.id
+            onSelect?()
+        }
         .contextMenu {
             Button {
                 proposedName = chat.title
@@ -149,6 +155,8 @@ struct ChatSidebarView: View {
                 Label("Archive", systemImage: "archivebox")
             }
             Button(role: .destructive) {
+                BrowserWorkspace.shared.forgetChat(chat.id)
+                ChatDraftStore.remove(chat.id)
                 store.delete(chat.id, kind: "chat")
                 if selectedChatID == chat.id { selectedChatID = nil }
             } label: {
