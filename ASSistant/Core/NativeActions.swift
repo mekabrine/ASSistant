@@ -16,6 +16,7 @@ enum NativeActionError: LocalizedError {
     case messagesUnavailable
     case openFailed
     case contactAccessDenied
+    case ambiguousContact
 
     var errorDescription: String? {
         switch self {
@@ -24,6 +25,7 @@ enum NativeActionError: LocalizedError {
         case .messagesUnavailable: return "This device cannot compose Messages with the system app."
         case .openFailed: return "iOS could not open the requested Phone or Shortcuts action."
         case .contactAccessDenied: return "Contacts permission was not granted."
+        case .ambiguousContact: return "More than one matching contact or phone number was found. Specify a full number instead."
         }
     }
 }
@@ -42,7 +44,7 @@ enum NativeActions {
     }
 
     static func openPhone(_ number: String) async throws -> String {
-        let sanitized = try cleanPhone(number)
+        let sanitized = try await resolvePhone(number)
         guard let url = URL(string: "tel:" + sanitized) else {
             throw NativeActionError.invalidNumber
         }
@@ -50,6 +52,41 @@ enum NativeActions {
             throw NativeActionError.openFailed
         }
         return "Opened the iOS Phone call request for \(sanitized). The user controls whether the call is placed; call completion is not observable."
+    }
+
+    /// Resolve a contact name only after explicit agent approval (or a user
+    /// action in Settings). Never pick one of multiple matching phone numbers.
+    static func resolvePhone(_ recipient: String) async throws -> String {
+        if let value = try? cleanPhone(recipient) { return value }
+        let query = recipient.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty && query.count < 120 else {
+            throw NativeActionError.invalidNumber
+        }
+        let contacts = CNContactStore()
+        let granted = try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Bool, Error>) in
+            contacts.requestAccess(for: .contacts) { approved, error in
+                if let error { continuation.resume(throwing: error) }
+                else { continuation.resume(returning: approved) }
+            }
+        }
+        guard granted else { throw NativeActionError.contactAccessDenied }
+        let found = try contacts.unifiedContacts(
+            matching: CNContact.predicateForContacts(matchingName: query),
+            keysToFetch: [
+                CNContactGivenNameKey as CNKeyDescriptor,
+                CNContactFamilyNameKey as CNKeyDescriptor,
+                CNContactNicknameKey as CNKeyDescriptor,
+                CNContactPhoneNumbersKey as CNKeyDescriptor
+            ]
+        )
+        let namesAndNumbers = found.flatMap { contact -> [String] in
+            contact.phoneNumbers.compactMap { try? cleanPhone($0.value.stringValue) }
+        }
+        let unique = Array(Set(namesAndNumbers))
+        guard !unique.isEmpty else { throw NativeActionError.invalidNumber }
+        guard unique.count == 1 else { throw NativeActionError.ambiguousContact }
+        return unique[0]
     }
 
     static func runShortcut(name: String, input: String? = nil) async throws -> String {
