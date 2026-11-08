@@ -127,4 +127,22 @@ final class ASSistantTests: XCTestCase {
         XCTAssertTrue(transmitted.contains("navy apron"))
     }
 
+    func testAccountToolsArePermissionCategorized() {
+        XCTAssertTrue(ToolRouter.automaticAccountReads.contains("gmail_search"))
+        XCTAssertFalse(ToolRouter.automaticAccountReads.contains("gmail_send"))
+        XCTAssertTrue(ToolRouter.automaticAccountReads.contains("spotify_now_playing"))
+        XCTAssertFalse(ToolRouter.automaticAccountReads.contains("spotify_pause"))
+        XCTAssertEqual(ToolRouter.category(for: "gmail_send"), "gmail")
+        XCTAssertEqual(ToolRouter.category(for: "place_call"), "phone")
+        XCTAssertEqual(ToolRouter.category(for: "run_shortcut"), "shortcuts")
+        XCTAssertEqual(ToolRouter.category(for: "compose_sms"), "sms")
+    }
+
+    @MainActor
+    func testPKCEChallengeMatchesRFC7636() {
+        let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        XCTAssertEqual(ConnectedServices.pkceChallenge(for: verifier),
+                       "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+    }
+
 }
