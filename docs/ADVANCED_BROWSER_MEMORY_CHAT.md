@@ -38,6 +38,33 @@ HTMLApp itself uses **WhisperKit on-device**, not an anonymous unlimited cloud S
 
 Call mode is foreground-only and turn-based: recording, transcription, AI response and spoken TTS. It does not display live browser pages while speaking; it can announce short phrases about searches, opening pages, and comparison steps rather than reading whole pages/URLs. Protected actions still require browser handoff. It is not an always-on background phone call.
 
+
+## November 8 UI and conversation-browser refinements
+
+- **Draggable mini-browser.** The floating website thumbnail can be dragged around the chat. It stays within the screen and avoids the bottom composer area. Each chat remembers the dock position.
+- **Browsers are chat-specific.** Each conversation owns its own browser tabs, current selection and navigation restore state; switching chats changes the visible tab set. Up to six tabs can be open per active chat. A few inactive live tab groups are retained in memory; older groups are released to reduce memory use and can be reloaded from saved state.
+- **Browser restoration.** A locally protected JSON record stores sanitized HTTPS URL, page title, a limited visible-text excerpt, approximate scroll position, tab ID and selection. This is saved on page updates, chat changes and app backgrounding. Restoring a chat after app relaunch navigates back to its saved pages. Site-dependent dynamic content, POST state, completed forms or the exact back/forward history may not be reproducible.
+- **Login privacy.** Website cookies remain in ASSistant's own WebKit storage for signed-in browsing across chats, separate from Safari and native Google/Spotify OAuth. Saved URLs have common OAuth/code/token query parameters stripped. No cookies, passwords, code values, form values or page HTML are written into the browser restore record. Text excerpts are stored locally and excluded from device backup, but they can still contain personal page text; don't use the app on a shared unlocked device if that is a concern.
+- **Fixed compact sidebar.** On iPhone, the chat list is a native-looking animated slide-over rather than a compact NavigationSplitView navigation destination. Opening it does not select/reselect the active conversation. Tapping a chat (including the current one) or closing the panel dismisses it. iPad retains its collapsible split-view sidebar.
+- **Dynamic multiline composer.** Text input grows naturally with line wrapping until a bounded maximum height, then scrolls inside the input. A dedicated expand/collapse + panel places Files/Photos/Camera above the editor instead of squeezing its width. The chat content and composer are centered to readable widths on iPad, and keyboard dismissal follows conversation scrolling.
+- **Per-chat unsent drafts.** Text that was typed but not sent is saved in locally protected per-chat files and restored when returning to that conversation. Sending clears its draft. Deleting a conversation also removes its locally saved browser record and draft.
+- **Sidebar usability.** Search, recency grouping, conversation previews, selection emphasis, rename, pin, archive and delete.
+
+### Manual verification
+
+- [ ] Open and close the iPhone sidebar repeatedly without selecting anything: the active chat must stay put and the sidebar must remain open until dismissed
+- [ ] Tap the already-selected chat while sidebar is open; verify it closes
+- [ ] Make chats A and B, browse different websites in each, switch back and forth; verify tab isolation and remembered selection
+- [ ] Force-quit and reopen, return to chat A and verify saved URL, title and approximate scroll position
+- [ ] Sign in inside browser A; confirm session cookies remain usable in browser B without exposing them to the model
+- [ ] Drag floating browser from right to left and near all safe screen edges; verify chat controls beneath remain tappable
+- [ ] Rotate iPhone / test iPad and open keyboard while dock floats: the overlay should remain in a visible safe area
+- [ ] Type a one-line and a long multiline message, then send and test keyboard dismissal
+- [ ] Leave an unsent draft in A, write a different draft in B, kill/relaunch and confirm each is restored separately
+- [ ] Delete a conversation, verify its browser and draft records no longer restore
+- [ ] Run manual GitHub Actions build with simulator tests enabled; these changes have not been verified by a new Xcode build
+
+
 ## Mandatory manual testing
 
 - [ ] Generate project with XcodeGen, resolve WhisperKit package and compile Debug/Release for iOS 16+.
