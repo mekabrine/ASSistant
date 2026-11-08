@@ -105,6 +105,8 @@ struct ChatView: View {
                                 }
                             }
                             .padding()
+                            .frame(maxWidth: 860)
+                            .frame(maxWidth: .infinity)
                         }
                         .scrollDismissesKeyboard(.interactively)
                         .onChange(of: currentMessages.count) { _ in
@@ -493,6 +495,8 @@ struct ChatView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
+        .frame(maxWidth: 860)
+        .frame(maxWidth: .infinity)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.cyan.opacity(0.14)))
         .padding(.horizontal, 6)
