@@ -859,34 +859,151 @@ private struct ChatPicker: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var selected: UUID?
     @State private var query = ""
+    @State private var showArchived = false
+    @State private var renaming: ChatThread?
+
+    private var filtered: [ChatThread] {
+        store.chats.filter { chat in
+            chat.archived == showArchived &&
+            (query.isEmpty || chat.title.localizedCaseInsensitiveContains(query) ||
+             store.messages(in: chat.id).contains(where: {
+                 $0.content.localizedCaseInsensitiveContains(query)
+             }))
+        }.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private var groups: [(String, [ChatThread])] {
+        let calendar = Calendar.current
+        let today = filtered.filter { calendar.isDateInToday($0.updatedAt) }
+        let yesterday = filtered.filter { calendar.isDateInYesterday($0.updatedAt) }
+        let week = filtered.filter {
+            !calendar.isDateInToday($0.updatedAt) && !calendar.isDateInYesterday($0.updatedAt) &&
+            $0.updatedAt > Date().addingTimeInterval(-7 * 86400)
+        }
+        let older = filtered.filter { $0.updatedAt <= Date().addingTimeInterval(-7 * 86400) }
+        return [("Today",today), ("Yesterday",yesterday), ("Previous 7 days",week), ("Older",older)]
+            .filter { !$0.1.isEmpty }
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                ForEach(store.chats.filter { chat in
-                    query.isEmpty || chat.title.localizedCaseInsensitiveContains(query) ||
-                    store.messages(in: chat.id).contains(where: { $0.content.localizedCaseInsensitiveContains(query) })
-                }) { chat in
+                Section {
                     Button {
-                        selected = chat.id
+                        selected = store.createChat().id
                         dismiss()
                     } label: {
-                        VStack(alignment: .leading) {
-                            Text(chat.title).font(.headline)
-                            Text(chat.updatedAt, style: .date).font(.caption).foregroundColor(.secondary)
+                        Label("New conversation", systemImage: "square.and.pencil")
+                            .fontWeight(.semibold)
+                    }
+                    Toggle("Show archived conversations", isOn: $showArchived)
+                }
+                ForEach(groups, id: \.0) { group in
+                    Section(group.0) {
+                        ForEach(group.1) { chat in
+                            Button {
+                                selected = chat.id
+                                dismiss()
+                            } label: {
+                                HStack(alignment: .top, spacing: 11) {
+                                    Image(systemName: selected == chat.id
+                                          ? "bubble.left.and.bubble.right.fill"
+                                          : "bubble.left.and.bubble.right")
+                                        .foregroundStyle(selected == chat.id ? .cyan : .secondary)
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        Text(chat.title)
+                                            .font(.headline).lineLimit(1)
+                                        if let last = store.messages(in: chat.id).last {
+                                            Text(last.content.replacingOccurrences(of: "\n", with: " "))
+                                                .font(.caption).foregroundStyle(.secondary)
+                                                .lineLimit(2)
+                                        }
+                                        HStack {
+                                            Text(chat.updatedAt, style: .relative)
+                                            Text("·")
+                                            Text("\(store.messages(in: chat.id).count) messages")
+                                        }
+                                        .font(.caption2).foregroundStyle(.tertiary)
+                                    }
+                                    Spacer()
+                                    if selected == chat.id { Image(systemName: "checkmark.circle.fill").foregroundStyle(.cyan) }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                            .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    for item in store.messages(in: chat.id) {
+                                        store.delete(item.id, kind: "message")
+                                    }
+                                    store.delete(chat.id, kind: "chat")
+                                } label: { Label("Delete", systemImage: "trash") }
+                                Button {
+                                    var archived = chat
+                                    archived.archived.toggle()
+                                    store.save(archived)
+                                } label: {
+                                    Label(chat.archived ? "Unarchive" : "Archive", systemImage: "archivebox")
+                                }.tint(.indigo)
+                            }
+                            .contextMenu {
+                                Button {
+                                    renaming = chat
+                                } label: { Label("Rename", systemImage: "pencil") }
+                            }
                         }
                     }
-                    .swipeActions {
-                        Button(role: .destructive) {
-                            for msg in store.messages(in: chat.id) { store.delete(msg.id, kind: "message") }
-                            store.delete(chat.id, kind: "chat")
-                        } label: { Text("Delete") }
+                }
+                if filtered.isEmpty {
+                    Section {
+                        Text("No matching conversations")
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
-            .searchable(text: $query)
+            .searchable(text: $query, prompt: "Search titles and chat messages")
+            .scrollContentBackground(.hidden)
+            .background(AmbientBackground())
             .navigationTitle("Conversations")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .sheet(item: $renaming) { chat in
+                ChatRenameSheet(chat: chat) { title in
+                    var updated = chat
+                    updated.title = title
+                    store.save(updated)
+                }
+            }
+        }
+    }
+}
+
+private struct ChatRenameSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let chat: ChatThread
+    let onSave: (String) -> Void
+    @State private var title: String
+
+    init(chat: ChatThread, onSave: @escaping (String) -> Void) {
+        self.chat = chat
+        self.onSave = onSave
+        _title = State(initialValue: chat.title)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Conversation name", text: $title)
+            }
+            .navigationTitle("Rename conversation")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let value = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !value.isEmpty { onSave(String(value.prefix(80))); dismiss() }
+                    }
+                }
+            }
         }
     }
 }
