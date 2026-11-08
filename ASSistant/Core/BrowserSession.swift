@@ -241,6 +241,18 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                                placeholder: $0["placeholder"] ?? "")
             }
             status = "Page ready"
+            let lowerText = pageText.lowercased()
+            let needsPassword = controls.contains(where: { $0.inputType == "password" })
+            let needsCode = controls.contains(where: { $0.kind == "input" }) &&
+                ["verification code", "security code", "two-factor authentication",
+                 "authenticator code", "one-time passcode"].contains(where: lowerText.contains)
+            if Self.looksLikeChallenge(pageText) {
+                requestHuman("Complete this website's CAPTCHA or security verification in the browser.")
+            } else if needsPassword {
+                requestHuman("Sign into this website yourself. Passwords stay inside the website.")
+            } else if needsCode {
+                requestHuman("Enter your security or verification code yourself. The code is never sent to the AI.")
+            }
             var result = "PAGE: " + title + "\nURL: " + currentURL + "\n\n"
             result += String(pageText.prefix(11500)) + "\n\nLINKS:\n"
             result += links.prefix(55).map { "\($0.id) \($0.text): \($0.href)" }.joined(separator: "\n")
