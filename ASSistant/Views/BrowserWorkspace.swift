@@ -3,27 +3,35 @@ import SwiftUI
 import WebKit
 import Combine
 
-/// Browser windows share the app's persistent WebKit website data store so
-/// logins remain available across chats. They never borrow Safari cookies.
+/// Only browser tabs belong to a chat. Website cookies remain in the app's
+/// persistent WebKit store, so users can sign in without sharing Safari cookies.
 @MainActor
 final class BrowserWorkspace: ObservableObject {
     static let shared = BrowserWorkspace()
+
+    private struct LiveChat {
+        var tabs: [BrowserSession]
+        var selectedID: UUID?
+        var dockX: Double
+        var dockY: Double
+    }
+
     @Published private(set) var sessions: [BrowserSession] = [BrowserSession()]
     @Published var selectedID: UUID?
+    @Published private(set) var currentChatID: UUID?
     @Published var fullScreen = false
     @Published var awaitingHuman = false
     @Published var handoffBrowserID: UUID?
+    @Published var dockX = 0.72
+    @Published var dockY = 0.61
+
+    private var openChats: [UUID: LiveChat] = [:]
     private var observers: [UUID: AnyCancellable] = [:]
+    private var tabChat: [UUID: UUID] = [:]
+    private var delayedSave: [UUID: Task<Void, Never>] = [:]
 
     init() {
         selectedID = sessions.first?.id
-        if let first = sessions.first { observe(first) }
-    }
-
-    private func observe(_ tab: BrowserSession) {
-        observers[tab.id] = tab.objectWillChange.sink { [weak self] _ in
-            Task { @MainActor in self?.objectWillChange.send() }
-        }
     }
 
     var active: BrowserSession {
@@ -32,28 +40,147 @@ final class BrowserWorkspace: ObservableObject {
 
     var anyVisible: Bool { sessions.contains(where: { $0.visible }) }
 
-    @discardableResult
-    func newBrowser() -> BrowserSession {
-        if sessions.count >= 6 {
-            // Bound live web processes, preserving all cookies.
-            if let old = sessions.first(where: { $0.id != selectedID && !$0.activeAgent }) {
-                old.close()
-                observers[old.id] = nil
-                sessions.removeAll { $0.id == old.id }
+    /// Called whenever the actual selected chat changes, never when the
+    /// mobile sidebar merely opens. Existing live tabs remain attached to
+    /// their conversation, and disk snapshots survive process termination.
+    func activateChat(_ chatID: UUID?) {
+        guard let chatID, currentChatID != chatID else { return }
+
+        if let previous = currentChatID {
+            persist(previous)
+            openChats[previous] = LiveChat(tabs: sessions,
+                                           selectedID: selectedID,
+                                           dockX: dockX, dockY: dockY)
+        } else {
+            for tab in sessions { tab.close() }
+        }
+
+        currentChatID = chatID
+        fullScreen = false
+        awaitingHuman = false
+        handoffBrowserID = nil
+
+        if let live = openChats.removeValue(forKey: chatID) {
+            sessions = live.tabs
+            selectedID = live.selectedID
+            dockX = live.dockX
+            dockY = live.dockY
+        } else if let record = BrowserStateStore.load(for: chatID) {
+            let restored = record.tabs.prefix(6).map { snapshot -> BrowserSession in
+                let tab = BrowserSession(tabID: snapshot.id)
+                tab.title = snapshot.title.isEmpty ? "Restored page" : snapshot.title
+                tab.currentURL = snapshot.url
+                tab.pageText = snapshot.pageExcerpt
+                tab.pendingRestoredScrollY = CGFloat(max(0, snapshot.scrollY))
+                tab.visible = true
+                attach(tab, to: chatID)
+                if let safe = BrowserStateStore.restorableURL(snapshot.url),
+                   let url = URL(string: safe) {
+                    tab.web.load(URLRequest(url: url))
+                }
+                return tab
+            }
+            sessions = restored.isEmpty ? [BrowserSession()] : restored
+            if restored.isEmpty { attach(sessions[0], to: chatID) }
+            selectedID = sessions.first(where: { $0.id == record.selectedTabID })?.id
+                ?? sessions.first?.id
+            dockX = record.dockX
+            dockY = record.dockY
+        } else {
+            sessions = [BrowserSession()]
+            attach(sessions[0], to: chatID)
+            selectedID = sessions[0].id
+            dockX = 0.72
+            dockY = 0.61
+        }
+        // Ensure previously cached live tabs are observed only once.
+        for tab in sessions where observers[tab.id] == nil { attach(tab, to: chatID) }
+        scheduleSave(chatID)
+    }
+
+    private func attach(_ tab: BrowserSession, to chatID: UUID) {
+        tabChat[tab.id] = chatID
+        tab.onPageUpdated = { [weak self] in
+            self?.scheduleSave(chatID)
+        }
+        observers[tab.id] = tab.objectWillChange.sink { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.objectWillChange.send()
+                self?.scheduleSave(chatID)
             }
         }
-        let item = BrowserSession()
-        item.visible = true
-        sessions.append(item)
-        observe(item)
-        selectedID = item.id
-        return item
+    }
+
+    private func scheduleSave(_ chatID: UUID) {
+        delayedSave[chatID]?.cancel()
+        delayedSave[chatID] = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 750_000_000)
+            guard !Task.isCancelled else { return }
+            self?.persist(chatID)
+        }
+    }
+
+    private func persist(_ chatID: UUID) {
+        let live: LiveChat
+        if chatID == currentChatID {
+            live = LiveChat(tabs: sessions, selectedID: selectedID,
+                            dockX: dockX, dockY: dockY)
+        } else if let cached = openChats[chatID] {
+            live = cached
+        } else { return }
+
+        let tabs: [SavedBrowserTab] = live.tabs.compactMap { tab in
+            let url = tab.web.url?.absoluteString ?? tab.currentURL
+            guard let safe = BrowserStateStore.restorableURL(url) else { return nil }
+            let title = String(tab.title.prefix(180))
+            let excerpt = tab.controls.contains(where: { $0.inputType == "password" })
+                || tab.requiresHuman ? "" : String(tab.pageText.prefix(1000))
+            return SavedBrowserTab(id: tab.id, url: safe, title: title,
+                                   pageExcerpt: excerpt,
+                                   scrollY: Double(max(0, tab.web.scrollView.contentOffset.y)),
+                                   visitedAt: .now)
+        }
+        BrowserStateStore.save(SavedChatBrowsers(
+            chatID: chatID, selectedTabID: live.selectedID,
+            tabs: tabs, dockX: live.dockX, dockY: live.dockY, savedAt: .now
+        ))
+    }
+
+    func saveNow() {
+        if let id = currentChatID { persist(id) }
+        for id in openChats.keys { persist(id) }
+    }
+
+    func moveDock(x: Double, y: Double) {
+        dockX = min(0.9, max(0.1, x))
+        dockY = min(0.86, max(0.12, y))
+        if let id = currentChatID { scheduleSave(id) }
+    }
+
+    @discardableResult
+    func newBrowser() -> BrowserSession {
+        if sessions.count >= 6,
+           let old = sessions.first(where: { $0.id != selectedID && !$0.activeAgent }) {
+            old.close()
+            observers[old.id] = nil
+            tabChat[old.id] = nil
+            sessions.removeAll { $0.id == old.id }
+        }
+        // Never go above six active tabs if every other one is busy.
+        if sessions.count >= 6 { return active }
+        let tab = BrowserSession()
+        tab.visible = true
+        sessions.append(tab)
+        if let id = currentChatID { attach(tab, to: id); scheduleSave(id) }
+        selectedID = tab.id
+        return tab
     }
 
     func select(_ id: UUID) {
         guard sessions.contains(where: { $0.id == id }) else { return }
         selectedID = id
         active.visible = true
+        if let chatID = currentChatID { scheduleSave(chatID) }
     }
 
     func open() {
@@ -62,9 +189,10 @@ final class BrowserWorkspace: ObservableObject {
     }
 
     func takeBackControl() {
-        if let id = handoffBrowserID, let target = sessions.first(where: { $0.id == id }) {
-            target.returnControl()
-            selectedID = target.id
+        if let id = handoffBrowserID,
+           let tab = sessions.first(where: { $0.id == id }) {
+            tab.returnControl()
+            selectedID = id
         } else {
             active.returnControl()
         }
@@ -80,32 +208,30 @@ final class BrowserWorkspace: ObservableObject {
     }
 
     func resumeOnNextMessage() {
-        for browser in sessions { browser.returnControl() }
+        for tab in sessions { tab.returnControl() }
         awaitingHuman = false
         handoffBrowserID = nil
     }
 
     func stopAll() {
-        for browser in sessions { browser.stop() }
+        for tab in sessions { tab.stop() }
     }
 
     func list() -> String {
-        sessions.enumerated().map { i, item in
-            "\(i + 1). id=\(item.id.uuidString) \(String(item.title.prefix(70))) \(item.currentURL)"
+        sessions.enumerated().map { index, tab in
+            "\(index + 1). id=\(tab.id.uuidString) \(String(tab.title.prefix(70))) \(tab.currentURL)"
         }.joined(separator: "\n")
     }
 
     func choose(_ value: String?) throws -> BrowserSession {
         guard let value, let id = UUID(uuidString: value),
-              let candidate = sessions.first(where: { $0.id == id }) else {
+              sessions.contains(where: { $0.id == id }) else {
             throw BrowserFailure.invalidLink
         }
-        select(candidate.id)
-        return candidate
+        select(id)
+        return active
     }
 
-    /// Agent stays paused while the user completes account/CAPTCHA actions.
-    /// No password, security code, input contents or cookies enter the prompt.
     func waitForHandoff() async throws -> String {
         let target = active
         guard target.requiresHuman || target.userControl else { return "" }
@@ -122,21 +248,48 @@ final class BrowserWorkspace: ObservableObject {
         return try await target.read()
     }
 
-    func clearBrowserLogins() async {
-        for tab in sessions { tab.close() }
-        observers.removeAll()
-        let types = WKWebsiteDataStore.allWebsiteDataTypes()
-        await withCheckedContinuation { continuation in
-            WKWebsiteDataStore.default().removeData(ofTypes: types, modifiedSince: .distantPast) {
-                continuation.resume()
+    func forgetChat(_ chatID: UUID) {
+        delayedSave[chatID]?.cancel()
+        delayedSave[chatID] = nil
+        if let old = openChats.removeValue(forKey: chatID) {
+            for tab in old.tabs {
+                tab.close()
+                tab.onPageUpdated = nil
+                observers[tab.id] = nil
+                tabChat[tab.id] = nil
             }
         }
+        if currentChatID == chatID {
+            sessions.forEach { $0.close() }
+            sessions = [BrowserSession()]
+            selectedID = sessions[0].id
+            currentChatID = nil
+            fullScreen = false
+        }
+        BrowserStateStore.remove(for: chatID)
+    }
+
+    func clearBrowserLogins() async {
+        for tab in sessions { tab.close() }
+        for live in openChats.values { live.tabs.forEach { $0.close() } }
+        observers.removeAll()
+        openChats.removeAll()
+        tabChat.removeAll()
+        for task in delayedSave.values { task.cancel() }
+        delayedSave.removeAll()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            WKWebsiteDataStore.default().removeData(
+                ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
+                modifiedSince: .distantPast
+            ) { continuation.resume() }
+        }
         sessions = [BrowserSession()]
-        observe(sessions[0])
+        if let chatID = currentChatID { attach(sessions[0], to: chatID) }
         selectedID = sessions[0].id
         awaitingHuman = false
         handoffBrowserID = nil
         fullScreen = false
+        saveNow()
     }
 }
 
