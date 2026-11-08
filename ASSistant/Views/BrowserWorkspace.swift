@@ -11,6 +11,7 @@ final class BrowserWorkspace: ObservableObject {
     @Published var selectedID: UUID?
     @Published var fullScreen = false
     @Published var awaitingHuman = false
+    @Published var handoffBrowserID: UUID?
 
     init() {
         selectedID = sessions.first?.id
@@ -50,12 +51,19 @@ final class BrowserWorkspace: ObservableObject {
     }
 
     func takeBackControl() {
-        active.returnControl()
+        if let id = handoffBrowserID, let target = sessions.first(where: { $0.id == id }) {
+            target.returnControl()
+            selectedID = target.id
+        } else {
+            active.returnControl()
+        }
         awaitingHuman = false
+        handoffBrowserID = nil
     }
 
     func requestHuman(_ reason: String) {
         active.requestHuman(reason)
+        handoffBrowserID = active.id
         awaitingHuman = true
         fullScreen = true
     }
@@ -63,6 +71,7 @@ final class BrowserWorkspace: ObservableObject {
     func resumeOnNextMessage() {
         for browser in sessions { browser.returnControl() }
         awaitingHuman = false
+        handoffBrowserID = nil
     }
 
     func stopAll() {
@@ -87,15 +96,19 @@ final class BrowserWorkspace: ObservableObject {
     /// Agent stays paused while the user completes account/CAPTCHA actions.
     /// No password, security code, input contents or cookies enter the prompt.
     func waitForHandoff() async throws -> String {
-        guard active.requiresHuman || active.userControl else { return "" }
+        let target = active
+        guard target.requiresHuman || target.userControl else { return "" }
+        handoffBrowserID = target.id
         awaitingHuman = true
         fullScreen = true
-        while active.userControl {
+        while target.userControl {
             try Task.checkCancellation()
             try await Task.sleep(nanoseconds: 350_000_000)
         }
         awaitingHuman = false
-        return try await active.read()
+        handoffBrowserID = nil
+        selectedID = target.id
+        return try await target.read()
     }
 
     func clearBrowserLogins() async {
@@ -109,6 +122,7 @@ final class BrowserWorkspace: ObservableObject {
         sessions = [BrowserSession()]
         selectedID = sessions[0].id
         awaitingHuman = false
+        handoffBrowserID = nil
         fullScreen = false
     }
 }
@@ -212,7 +226,7 @@ struct BrowserFullScreenView: View {
                 }
                 BrowserPage(session: workspace.active, workspace: workspace)
                     .id(workspace.active.id)
-                if workspace.active.userControl {
+                if workspace.active.userControl || workspace.awaitingHuman {
                     Button {
                         workspace.takeBackControl()
                     } label: {
@@ -306,17 +320,10 @@ private struct BrowserPage: View {
         let value = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return }
         editingAddress = false
-        session.userControl = true
-        Task {
-            session.returnControl()
-            if value.hasPrefix("https://") {
-                _ = try? await session.navigate(value)
-            } else if value.contains(".") && !value.contains(" ") {
-                _ = try? await session.navigate("https://" + value)
-            } else {
-                _ = try? await session.search(value)
-            }
-            session.userControl = true
+        do {
+            try session.navigateAsUser(value)
+        } catch {
+            session.lastError = error.localizedDescription
         }
     }
 }
