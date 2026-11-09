@@ -30,6 +30,7 @@ struct CheckoutSnapshot: Identifiable, Equatable {
     let checkoutURL: String
     let productURL: String
     let productName: String
+    let productDescription: String
     let variant: String
     let quantity: Int
     let currency: String
@@ -69,7 +70,7 @@ extension BrowserSession {
         guard isAmazonProductPage else { throw ShoppingBrowserError.missingProduct }
         let key = category.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let choice = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard ["color", "size", "style"].contains(key), !choice.isEmpty,
+        guard ["color", "size", "style", "quantity"].contains(key), !choice.isEmpty,
               choice.count <= 60, !choice.contains("<") else {
             throw ShoppingBrowserError.missingVariant
         }
@@ -79,7 +80,9 @@ extension BrowserSession {
         let js = #"""
         args => {
           const key=args.key, wanted=args.value.toLowerCase().trim();
-          const root=document.querySelector('#variation_'+key+'_name');
+          const root=key==='quantity'
+            ?document.querySelector('#quantity,#quantityDropdown')
+            :document.querySelector('#variation_'+key+'_name');
           if(!root)return {ok:false,reason:'Variation widget not found'};
           const visible=e=>!!(e.getClientRects().length);
           const select=root.matches('select')?root:root.querySelector('select');
@@ -115,7 +118,9 @@ extension BrowserSession {
         try await Task.sleep(nanoseconds: 1_350_000_000)
         let check = #"""
         args => {
-          const root=document.querySelector('#variation_'+args.key+'_name');
+          const root=args.key==='quantity'
+            ?document.querySelector('#quantity,#quantityDropdown')
+            :document.querySelector('#variation_'+args.key+'_name');
           if(!root)return {verified:false};
           const select=root.matches('select')?root:root.querySelector('select');
           const selected=select?.selectedOptions?.[0] ||
@@ -270,9 +275,13 @@ extension BrowserSession {
         let cents = number.multiplying(by: 100).intValue
         guard cents > 0 else { throw ShoppingBrowserError.missingTotal }
         let rawProduct = result["product"] as? String ?? ""
-        let productURL = Self.safeURL(rawProduct)?.absoluteString ??
-            Self.safeURL(lastProductURL)?.absoluteString ?? ""
-        guard !productURL.isEmpty else { throw ShoppingBrowserError.missingProduct }
+        let productCandidate = Self.safeURL(lastProductURL) ??
+            Self.safeURL(rawProduct)
+        guard let product = productCandidate,
+              ShoppingPolicy.amazonHost(product) else {
+            throw ShoppingBrowserError.missingProduct
+        }
+        let productURL = product.absoluteString
         let variant = selectedVariants.keys.sorted().compactMap { key in
             selectedVariants[key].map { "\(key): \($0)" }
         }.joined(separator: ", ")
@@ -282,7 +291,10 @@ extension BrowserSession {
             id: UUID(), tabID: id, checkoutURL: web.url?.absoluteString ?? "",
             productURL: productURL, productName: String((lastProductTitle.isEmpty
                 ? (result["name"] as? String ?? title) : lastProductTitle).prefix(160)),
-            variant: variant, quantity: 1, currency: "USD", totalCents: cents,
+            productDescription: String(lastProductDescription.prefix(450)),
+            variant: variant,
+            quantity: Int(selectedVariants["quantity"] ?? "1") ?? 1,
+            currency: "USD", totalCents: cents,
             orderButtonSelector: button, capturedAt: .now
         )
     }
