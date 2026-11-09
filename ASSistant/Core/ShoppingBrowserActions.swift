@@ -115,7 +115,6 @@ extension BrowserSession {
         let result = try await shoppingDictionary("(" + js + ")(" + args + ")")
         guard result["ok"] as? Bool == true else { throw ShoppingBrowserError.missingVariant }
         try Task.checkCancellation()
-        try await Task.sleep(nanoseconds: 1_350_000_000)
         let check = #"""
         args => {
           const root=args.key==='quantity'
@@ -131,10 +130,18 @@ extension BrowserSession {
           return {verified:label.includes(args.value.toLowerCase().trim())};
         }
         """#
-        let verified = try await shoppingDictionary("(" + check + ")(" + args + ")")
-        guard verified["verified"] as? Bool == true else {
-            throw ShoppingBrowserError.missingVariant
+        var selected = false
+        for _ in 0..<7 {
+            try Task.checkCancellation()
+            try await Task.sleep(nanoseconds: 420_000_000)
+            if let checkResult = try? await shoppingDictionary(
+                "(" + check + ")(" + args + ")"
+            ), checkResult["verified"] as? Bool == true {
+                selected = true
+                break
+            }
         }
+        guard selected else { throw ShoppingBrowserError.missingVariant }
         selectedVariants[key] = choice
         let observation = try await read()
         return "Verified selected \(key): \(choice).\n" + observation
@@ -158,8 +165,7 @@ extension BrowserSession {
         """#
         let clicked = try await shoppingDictionary(js)
         guard clicked["ok"] as? Bool == true else { throw ShoppingBrowserError.cartUnverified }
-        try await Task.sleep(nanoseconds: 1_600_000_000)
-        let verified = try await shoppingDictionary(#"""
+        let inspect = #"""
         (() => {
           const text=(document.body?.innerText||'').toLowerCase();
           const marker=document.querySelector(
@@ -168,11 +174,16 @@ extension BrowserSession {
           return {ok:!!(marker && marker.getClientRects().length) ||
             /added to (your |the )?cart|item added to cart/.test(text.slice(0,6000))};
         })()
-        """#)
-        if verified["ok"] as? Bool == true {
-            addedToCart = true
-            return "Amazon displayed an Add to Cart confirmation. " +
-                ((try? await read()) ?? "The item was added.")
+        """#
+        for _ in 0..<6 {
+            try Task.checkCancellation()
+            try await Task.sleep(nanoseconds: 420_000_000)
+            if let verified = try? await shoppingDictionary(inspect),
+               verified["ok"] as? Bool == true {
+                addedToCart = true
+                return "Amazon displayed an Add to Cart confirmation. " +
+                    ((try? await read()) ?? "The item was added.")
+            }
         }
         // Do not retry automatically: the click may have already succeeded.
         return "Clicked Add to Cart but the website did not show a recognizable confirmation. " +
