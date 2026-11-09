@@ -147,6 +147,7 @@ struct PurchaseHistoryView: View {
         case "confirmed": return "checkmark.seal.fill"
         case "canceledUserReported": return "xmark.circle"
         case "submissionUnverified": return "questionmark.circle"
+        case "notSubmitted": return "xmark.shield"
         default: return "clock"
         }
     }
@@ -157,6 +158,7 @@ struct PurchaseHistoryView: View {
         case "submissionUnverified": return "Submission not verified — check Your Orders"
         case "canceledUserReported": return "Canceled (reported by you)"
         case "prepared": return "Prepared — not purchased"
+        case "notSubmitted": return "Order not submitted"
         default: return state
         }
     }
