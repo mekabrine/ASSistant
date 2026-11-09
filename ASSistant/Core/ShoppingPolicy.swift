@@ -76,6 +76,7 @@ enum ShoppingPolicy {
     static func currency(_ cents: Int, code: String = "USD") -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
+        formatter.locale = Locale(identifier: "en_US")
         formatter.currencyCode = code
         return formatter.string(from: NSNumber(value: Double(cents) / 100)) ??
             "\(code) \(Double(cents) / 100)"
@@ -114,8 +115,10 @@ struct ShoppingGoal {
         size = requested(["size "])
         needsCart = ["add to cart", "add it to cart", "put in cart", "put it in my cart"]
             .contains(where: p.contains)
-        needsCheckout = ["place the order", "buy it", "purchase it", "buy the ",
-                         "buy a ", "order the ", "checkout for"].contains(where: p.contains)
+        needsCheckout = ["place the order", "buy it", "buy me", "purchase it",
+                         "purchase the", "purchase me", "buy the ", "buy a ",
+                         "order the ", "order me", "checkout for",
+                         "check out and buy"].contains(where: p.contains)
     }
 
     @MainActor
