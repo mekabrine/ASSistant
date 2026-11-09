@@ -10,6 +10,18 @@ struct PurchaseHistoryView: View {
     @State private var orderBrowserOpen = false
     @State private var selectedToMarkCanceled: PurchaseRecord?
     @State private var errorMessage = ""
+    @State private var filter = "All"
+
+    private var filteredPurchases: [PurchaseRecord] {
+        store.purchases.filter { record in
+            switch filter {
+            case "Confirmed": return record.status == "confirmed"
+            case "Unverified": return record.status == "submissionUnverified"
+            case "Canceled": return record.status == "canceledUserReported"
+            default: return true
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -22,11 +34,20 @@ struct PurchaseHistoryView: View {
                             Label("\(store.purchases.count) purchase records",
                                   systemImage: "shippingbox")
                             Spacer()
-                            Text("Local history")
+                            Text("This month: " +
+                                ShoppingPolicy.currency(
+                                    ShoppingPolicy.monthSpentCents(store.purchases)))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
+                        Picker("Filter", selection: $filter) {
+                            ForEach(["All", "Confirmed", "Unverified", "Canceled"],
+                                    id: \.self) { option in
+                                Text(option).tag(option)
+                            }
+                        }
+                        .pickerStyle(.segmented)
                     }
-                    ForEach(store.purchases) { record in
+                    ForEach(filteredPurchases) { record in
                         purchaseRow(record)
                     }
                 }
