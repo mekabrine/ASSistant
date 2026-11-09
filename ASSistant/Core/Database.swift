@@ -210,6 +210,7 @@ final class AppStore: ObservableObject {
     @Published var tasks: [AgentTask] = []
     @Published var apps: [GeneratedApp] = []
     @Published var audits: [ToolAudit] = []
+    @Published var purchases: [PurchaseRecord] = []
     @Published var syncStatus: String = "Loading"
     @Published var lastDiagnostic: ContextDiagnostic?
     private var observers: [NSObjectProtocol] = []
@@ -243,6 +244,7 @@ final class AppStore: ObservableObject {
         tasks = database.all("task", as: AgentTask.self).sorted { $0.createdAt > $1.createdAt }
         apps = database.all("app", as: GeneratedApp.self).sorted { $0.updatedAt > $1.updatedAt }
         audits = database.all("audit", as: ToolAudit.self).sorted { $0.timestamp > $1.timestamp }
+        purchases = database.all("purchase", as: PurchaseRecord.self).sorted { $0.createdAt > $1.createdAt }
         if agents.isEmpty { save(AgentProfile(), kind: "agent") }
     }
 
@@ -255,6 +257,7 @@ final class AppStore: ObservableObject {
     func save(_ task: AgentTask) { save(task, kind: "task") }
     func save(_ app: GeneratedApp) { save(app, kind: "app") }
     func save(_ audit: ToolAudit) { save(audit, kind: "audit") }
+    func save(_ purchase: PurchaseRecord) { save(purchase, kind: "purchase") }
 
     private func save<T: Codable & Identifiable>(_ value: T, kind: String) where T.ID == UUID {
         database.upsert(value, kind: kind, id: value.id)
@@ -273,6 +276,7 @@ final class AppStore: ObservableObject {
         case "task": tasks = database.all(kind, as: AgentTask.self).sorted { $0.createdAt > $1.createdAt }
         case "app": apps = database.all(kind, as: GeneratedApp.self).sorted { $0.updatedAt > $1.updatedAt }
         case "audit": audits = database.all(kind, as: ToolAudit.self).sorted { $0.timestamp > $1.timestamp }
+        case "purchase": purchases = database.all(kind, as: PurchaseRecord.self).sorted { $0.createdAt > $1.createdAt }
         default: break
         }
     }
