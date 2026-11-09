@@ -157,21 +157,29 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     func search(_ query: String, site: String? = nil) async throws -> String {
         let trimmed = String(query.prefix(220)).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw BrowserFailure.badURL }
-        let domain = (site ?? "").lowercased()
-        let terms = (domain == "amazon" || domain == "amazon.com" ? "site:amazon.com " : "") + trimmed
-        let engines = ["https://www.google.com/search", "https://www.bing.com/search",
-                       "https://duckduckgo.com/"]
+        let amazon = ["amazon", "amazon.com"].contains((site ?? "").lowercased())
+        let terms = (amazon ? "site:amazon.com " : "") + trimmed
+        var engines: [(base: String, term: String, key: String)] = []
+        if amazon {
+            // Start on Amazon itself, so shopping tasks can follow product
+            // links and select variations without hopping through Google.
+            engines.append(("https://www.amazon.com/s", trimmed, "k"))
+        }
+        engines += [
+            ("https://www.google.com/search", terms, "q"),
+            ("https://www.bing.com/search", terms, "q"),
+            ("https://duckduckgo.com/", terms, "q")
+        ]
         var lastFailure = "Search pages were unavailable."
-        for base in engines {
+        for engine in engines {
             try Task.checkCancellation()
-            var components = URLComponents(string: base)!
-            components.queryItems = [URLQueryItem(name: "q", value: terms)]
+            var components = URLComponents(string: engine.base)!
+            components.queryItems = [URLQueryItem(name: engine.key, value: engine.term)]
             guard let url = components.url else { continue }
             do {
                 let observation = try await navigate(url.absoluteString)
-                if Self.looksLikeChallenge(observation) || requiresHuman {
-                    lastFailure = "Search engine requested human verification."
-                    returnControl()
+                if Self.looksLikeChallenge(observation) || Self.needsHuman(observation) {
+                    lastFailure = "The search provider requested human verification."
                     continue
                 }
                 return observation
@@ -179,12 +187,11 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                 throw CancellationError()
             } catch {
                 lastFailure = error.localizedDescription
-                if requiresHuman { returnControl() }
                 continue
             }
         }
-        requestHuman("The search engines could not return an accessible result: " + lastFailure +
-            " Complete any security check, then return control to ASSistant.")
+        requestHuman("Search providers were blocked: " + lastFailure +
+                     " Complete any security challenge, then return control to ASSistant.")
         return "Human help required with live browser. " + lastFailure
     }
 
@@ -308,9 +315,13 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             let needsCode = controls.contains(where: { $0.kind == "input" }) &&
                 ["verification code", "security code", "two-factor authentication",
                  "authenticator code", "one-time passcode"].contains(where: lowerText.contains)
-            if Self.looksLikeChallenge(pageText) {
+            let host = web.url?.host?.lowercased() ?? ""
+            let searchProvider = ["www.google.com", "www.bing.com", "duckduckgo.com",
+                                  "www.duckduckgo.com"].contains(host)
+                || (ShoppingPolicy.amazonHost(web.url) && web.url?.path == "/s")
+            if Self.looksLikeChallenge(pageText) && !searchProvider {
                 requestHuman("Complete this website's CAPTCHA or security verification in the browser.")
-            } else if needsPassword {
+            } else if needsPassword && !searchProvider {
                 requestHuman("Sign into this website yourself. Passwords stay inside the website.")
             } else if needsCode {
                 requestHuman("Enter your security or verification code yourself. The code is never sent to the AI.")
@@ -323,10 +334,9 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                 "\($0.id) \($0.kind) \($0.inputType) \($0.text) \($0.placeholder)"
             }.joined(separator: "\n")
             if Self.needsHuman(result) {
-                // Search providers are allowed to fall back to Bing/DDG before
-                // requiring a human CAPTCHA handoff.
-                let host = web.url?.host?.lowercased() ?? ""
-                if ["www.google.com", "www.bing.com", "duckduckgo.com"].contains(host) {
+                // Search providers (including Amazon results) may fall back
+                // before asking the human to solve CAPTCHA.
+                if searchProvider {
                     return String(result.prefix(17500))
                 }
                 requestHuman("Complete the site sign-in, CAPTCHA, or security challenge, then tap Return control to AI.")
