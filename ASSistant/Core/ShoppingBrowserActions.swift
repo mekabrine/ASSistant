@@ -322,6 +322,11 @@ extension BrowserSession {
     /// Click happens once; ambiguous outcomes must never be auto-retried.
     func submitApprovedOrder(_ approved: CheckoutSnapshot) async throws -> PurchaseSubmissionResult {
         try requireAmazon()
+        guard ShoppingPolicy.level == 4,
+              approved.totalCents > 0,
+              approved.totalCents <= ShoppingPolicy.maxOrderCents else {
+            throw ShoppingBrowserError.forbiddenAction
+        }
         guard !orderSubmissionAttempted else { throw ShoppingBrowserError.alreadySubmitted }
         guard approved.tabID == id,
               Date().timeIntervalSince(approved.capturedAt) < 300,
