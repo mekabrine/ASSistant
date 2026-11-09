@@ -127,6 +127,14 @@ enum AgentEngine {
         }
         messages[0].content += "\n" + AccountAgentTools.instructions(allowedTools: enabledAccounts)
         messages[0].content += "\n" + MemoryDirectory.instructions
+        messages[0].content += "\nSHOPPING PERMISSIONS: Level " +
+            String(ShoppingPolicy.level) + " (" +
+            ShoppingPolicy.levelNames[ShoppingPolicy.level] +
+            "). Per-order maximum: " + ShoppingPolicy.currency(ShoppingPolicy.maxOrderCents) +
+            ". Monthly ceiling: " + ShoppingPolicy.currency(ShoppingPolicy.monthlyCapCents) +
+            ". Use only authorized tools for explicitly requested shopping actions. " +
+            "Even at level 4, a human must approve the exact live checkout total " +
+            "before any Place Order submission."
         let configured = UserDefaults.standard.object(forKey: "agentMaxSteps") as? Int ?? defaultMaximumSteps
         let maxSteps = max(3, min(40, configured))
         var steps = 0
