@@ -546,10 +546,10 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
         if url.scheme == "about" { decisionHandler(.allow); return }
-        if navigationAction.navigationType == .linkActivated {
-            userControl = true
-            status = "You are controlling this tab"
-        }
+        // The injected click/input handler distinguishes genuine human page
+        // interactions from the agent's narrowly scoped programmatic clicks.
+        // Treating *every* linkActivated navigation as human takeover caused
+        // automated product-variation clicks to halt the agent one step early.
         decisionHandler(Self.safeURL(url.absoluteString) != nil ? .allow : .cancel)
     }
 }
