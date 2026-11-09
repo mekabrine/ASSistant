@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var showAgents = false
     @State private var showAccounts = false
     @State private var showDeviceActions = false
+    @State private var showPurchases = false
     @State private var confirmBrowserReset = false
     @State private var editingProvider: ProviderProfile?
     @State private var gistToken = ""
@@ -24,7 +25,10 @@ struct SettingsView: View {
     @AppStorage("sttRequireKey") private var sttRequireKey = true
     @AppStorage("cloudSyncEnabled") private var cloudSyncEnabled = false
     @AppStorage("autoSummaryEnabled") private var autoSummaryEnabled = true
-    @AppStorage("agentMaxSteps") private var agentMaxSteps = 10
+    @AppStorage("agentMaxSteps") private var agentMaxSteps = 18
+    @AppStorage("shoppingAutonomyLevel") private var shoppingAutonomyLevel = 1
+    @AppStorage("shoppingOrderCap") private var shoppingOrderCap = 250.0
+    @AppStorage("shoppingMonthlyCap") private var shoppingMonthlyCap = 500.0
     @AppStorage("chatTitleProviderID") private var chatTitleProviderID = ""
     @AppStorage("chatTitleModel") private var chatTitleModel = ""
 
@@ -119,9 +123,54 @@ struct SettingsView: View {
                     Text("Names are refreshed when a chat begins and approximately every five messages, using up to the last 50 turns. Pick a cheap/small model supported by your provider; title generation makes additional API requests.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Section("Agent autonomy") {
-                    Stepper("Maximum agent tool steps: \(agentMaxSteps)", value: $agentMaxSteps, in: 3...20)
-                    Text("Allows more browser, account and memory lookups per request, while keeping a finite limit. Additional model tool calls may increase API costs; actions affecting accounts still require approval.")
+                Section("Agent autonomy and shopping") {
+                    VStack(alignment: .leading, spacing: 11) {
+                        HStack {
+                            Label("Shopping autonomy", systemImage: "slider.horizontal.3")
+                                .font(.headline)
+                            Spacer()
+                            Text("\(shoppingAutonomyLevel) / 4")
+                                .font(.subheadline).monospacedDigit()
+                        }
+                        Slider(value: Binding(
+                            get: { Double(shoppingAutonomyLevel) },
+                            set: { shoppingAutonomyLevel = Int($0.rounded()) }
+                        ), in: 0...4, step: 1)
+                        Text(ShoppingPolicy.levelNames[max(0, min(4, shoppingAutonomyLevel))])
+                            .font(.subheadline).fontWeight(.semibold)
+                        Text("0: browse only · 1: choose colors/sizes · 2: cart · 3: checkout preparation · 4: submit orders after approving the exact total. Final purchases always require confirmation.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Maximum single order")
+                        Spacer()
+                        TextField("USD", value: $shoppingOrderCap, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 100)
+                    }
+                    HStack {
+                        Text("Monthly spending limit")
+                        Spacer()
+                        TextField("USD", value: $shoppingMonthlyCap, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 100)
+                    }
+                    Button { showPurchases = true } label: {
+                        HStack {
+                            Label("Purchases and order history", systemImage: "bag.fill")
+                            Spacer()
+                            Text("\(store.purchases.count)")
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Text("Amounts are USD spending caps. Unverified submissions also count toward your monthly limit until resolved. The agent never receives payment details or authorization to bypass verification.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Stepper("Maximum agent tool steps: \(agentMaxSteps)", value: $agentMaxSteps, in: 3...40)
+                    Text("More steps help the AI finish its last requested browser action, but can increase model API usage. A goal check prevents unsupported steps from being silently reported as done.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Context and memory") {
@@ -263,6 +312,9 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showDeviceActions) {
                 DeviceActionsView().environmentObject(store)
+            }
+            .sheet(isPresented: $showPurchases) {
+                PurchaseHistoryView().environmentObject(store)
             }
             .sheet(isPresented: $createProvider) {
                 ProviderEditor(profile: ProviderProfile(), isNew: true).environmentObject(store)
