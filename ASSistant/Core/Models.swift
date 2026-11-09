@@ -90,6 +90,28 @@ struct GeneratedApp: Codable, Identifiable, Hashable {
     var version: Int = 1
 }
 
+/// Local order ledger. Only a verified order-confirmation page establishes
+/// a confirmed purchase; a click or a model assertion never does.
+struct PurchaseRecord: Codable, Identifiable, Hashable {
+    var id: UUID = UUID()
+    var chatID: UUID
+    var merchant: String
+    var productName: String
+    var productURL: String
+    var description: String
+    var variant: String = ""
+    var quantity: Int = 1
+    var currency: String = "USD"
+    var totalCents: Int
+    var status: String = "prepared"
+    var orderID: String? = nil
+    var orderURL: String? = nil
+    var createdAt: Date = .now
+    var updatedAt: Date = .now
+    var confirmedAt: Date? = nil
+    var note: String = ""
+}
+
 struct ToolAudit: Codable, Identifiable, Hashable {
     var id: UUID = UUID()
     var tool: String
