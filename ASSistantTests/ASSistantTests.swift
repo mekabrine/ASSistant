@@ -434,4 +434,95 @@ final class ASSistantTests: XCTestCase {
         XCTAssertEqual(ChatDraftStore.get(second), "Another draft")
     }
 
+    func testShoppingLevelsAndExplicitIntent() {
+        XCTAssertEqual(ShoppingPolicy.requiredLevel(for: "browser_follow"), 0)
+        XCTAssertEqual(ShoppingPolicy.requiredLevel(for: "browser_select_variant"), 1)
+        XCTAssertEqual(ShoppingPolicy.requiredLevel(for: "browser_add_to_cart"), 2)
+        XCTAssertEqual(ShoppingPolicy.requiredLevel(for: "browser_prepare_checkout"), 3)
+        XCTAssertEqual(ShoppingPolicy.requiredLevel(for: "browser_place_order"), 4)
+        XCTAssertTrue(ShoppingPolicy.explicitIntent(
+            "browser_select_variant", prompt: "Pick the color pink"))
+        XCTAssertFalse(ShoppingPolicy.explicitIntent(
+            "browser_add_to_cart", prompt: "Just compare products, do not buy"))
+        XCTAssertTrue(ShoppingPolicy.amazonHost(URL(string: "https://www.amazon.com/dp/B00TEST")))
+        XCTAssertFalse(ShoppingPolicy.amazonHost(URL(string: "https://amazon.com.evil.test/item")))
+    }
+
+    func testShoppingGoalRequiresLastStep() {
+        let goal = ShoppingGoal(prompt:
+            "Open amazon.com, find a phone case, open the product page, pick the color pink and add it to cart")
+        XCTAssertTrue(goal.needsProductPage)
+        XCTAssertEqual(goal.color, "pink")
+        XCTAssertTrue(goal.needsCart)
+        XCTAssertTrue(goal.hasShoppingObjectives)
+    }
+
+    @MainActor
+    func testShoppingGoalMissingStateChecks() {
+        let goal = ShoppingGoal(prompt: "Pick the color pink and add to cart")
+        let tab = BrowserSession()
+        let initial = goal.missing(in: tab)
+        XCTAssertTrue(initial.contains(where: { $0.contains("color pink") }))
+        XCTAssertTrue(initial.contains(where: { $0.contains("cart") }))
+        tab.selectedVariants["color"] = "pink"
+        tab.addedToCart = true
+        XCTAssertTrue(goal.missing(in: tab).isEmpty)
+        tab.close()
+    }
+
+    func testPurchaseLedgerPersistsConfirmedVsUnverified() {
+        let chatID = UUID()
+        let confirmed = PurchaseRecord(
+            chatID: chatID, merchant: "Amazon.com",
+            productName: "Pink phone case",
+            productURL: "https://www.amazon.com/dp/EXAMPLE",
+            description: "Shock-resistant case", totalCents: 2199,
+            status: "confirmed"
+        )
+        var uncertain = confirmed
+        uncertain.id = UUID()
+        uncertain.status = "submissionUnverified"
+        let encoded = try? JSONEncoder().encode([confirmed, uncertain])
+        let restored = encoded.flatMap { try? JSONDecoder().decode([PurchaseRecord].self, from: $0) }
+        XCTAssertEqual(restored?.count, 2)
+        XCTAssertEqual(restored?.first?.totalCents, 2199)
+        XCTAssertEqual(restored?.last?.status, "submissionUnverified")
+    }
+
+    func testShoppingMonthlyBudgetCountsUnverifiedOrderAttempts() {
+        var confirmed = PurchaseRecord(
+            chatID: UUID(), merchant: "Amazon.com",
+            productName: "Headphones", productURL: "https://www.amazon.com/dp/EXAMPLE",
+            description: "Pair", totalCents: 10000, status: "confirmed"
+        )
+        var unknown = confirmed
+        unknown.id = UUID()
+        unknown.totalCents = 2000
+        unknown.status = "submissionUnverified"
+        var canceled = confirmed
+        canceled.id = UUID()
+        canceled.status = "canceledUserReported"
+        canceled.totalCents = 6000
+        XCTAssertEqual(ShoppingPolicy.monthSpentCents([confirmed, unknown, canceled]), 12000)
+        confirmed.createdAt = .now.addingTimeInterval(-65 * 86400)
+        XCTAssertEqual(ShoppingPolicy.monthSpentCents([confirmed, unknown, canceled]), 2000)
+    }
+
+    @MainActor
+    func testPurchaseApprovalSnapshotCapturesExactTotal() {
+        let review = CheckoutSnapshot(
+            id: UUID(), tabID: UUID(),
+            checkoutURL: "https://www.amazon.com/gp/buy/spc/handlers/display.html",
+            productURL: "https://www.amazon.com/dp/EXAMPLE",
+            productName: "Pink case", productDescription: "A shock-resistant case",
+            variant: "color: pink", quantity: 1, currency: "USD",
+            totalCents: 2199,
+            orderButtonSelector: "input[name=\"placeYourOrder1\"]",
+            capturedAt: .now
+        )
+        XCTAssertEqual(review.totalDescription, "$21.99")
+        XCTAssertEqual(review.totalCents, 2199)
+        XCTAssertEqual(review.variant, "color: pink")
+    }
+
 }
