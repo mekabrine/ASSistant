@@ -56,6 +56,7 @@ struct ChatView: View {
     @State private var editingInlineApp: GeneratedApp?
     @State private var smsDraft: SMSDraft?
     @State private var smsProposal: ProposedTool?
+    @State private var checkoutReview: CheckoutSnapshot?
 
     private var current: ChatThread? { store.chats.first(where: { $0.id == chatID }) }
     private var currentMessages: [ChatMessage] {
@@ -200,6 +201,14 @@ struct ChatView: View {
             }
             .fullScreenCover(isPresented: $browser.fullScreen) {
                 BrowserFullScreenView(workspace: browser)
+            }
+            .sheet(item: $checkoutReview, onDismiss: {
+                browser.active.orderSubmissionRequested = false
+            }) { review in
+                PurchaseApprovalView(review: review) { approved in
+                    await approveCheckout(approved)
+                }
+                .environmentObject(store)
             }
             .sheet(isPresented: $showActivity) {
                 AgentActivityView().environmentObject(store)
@@ -788,13 +797,37 @@ struct ChatView: View {
                     Task { await updateChatTitle(threadID: thread.id, model: profile) }
                 }
                 if let tool = outcome.pendingTool {
-                    let category = ToolRouter.category(for: tool.name)
-                    if category == "task" || store.agent(for: thread).allowedTools.contains(category) {
-                        pendingTool = tool
-                        toolAlert = true
+                    if tool.name == "browser_place_order" {
+                        guard store.agent(for: thread).allowedTools.contains("web"),
+                              ShoppingPolicy.canRun(tool.name),
+                              browser.currentChatID == thread.id else {
+                            _ = store.append(role: "assistant", text:
+                                "Checkout approval was blocked by your web-tool permissions or shopping autonomy setting.", to: thread)
+                            return
+                        }
+                        do {
+                            let review = try await browser.active.inspectCheckout()
+                            if ShoppingPolicy.canApprove(totalCents: review.totalCents,
+                                                          records: store.purchases) {
+                                checkoutReview = review
+                            } else {
+                                _ = store.append(role: "assistant", text:
+                                    "The live order total exceeds your shopping spending limits. Nothing was submitted.", to: thread)
+                            }
+                        } catch {
+                            _ = store.append(role: "assistant", text:
+                                "Unable to verify the Amazon checkout for approval: " +
+                                error.localizedDescription, to: thread)
+                        }
                     } else {
-                        _ = store.append(role: "assistant", text:
-                            "The \(category) tool is disabled for this agent. Enable it in Settings → Agents.", to: thread)
+                        let category = ToolRouter.category(for: tool.name)
+                        if category == "task" || store.agent(for: thread).allowedTools.contains(category) {
+                            pendingTool = tool
+                            toolAlert = true
+                        } else {
+                            _ = store.append(role: "assistant", text:
+                                "The \(category) tool is disabled for this agent. Enable it in Settings → Agents.", to: thread)
+                        }
                     }
                 }
                 let appToolAllowed = store.agent(for: thread).allowedTools.contains("htmlapp")
@@ -822,6 +855,48 @@ struct ChatView: View {
                 agentStatus = ""
                 streaming = ""
             }
+        }
+    }
+
+    private func approveCheckout(_ review: CheckoutSnapshot) async -> String {
+        guard let thread = current, browser.currentChatID == thread.id,
+              browser.active.id == review.tabID,
+              store.agent(for: thread).allowedTools.contains("web"),
+              ShoppingPolicy.canApprove(totalCents: review.totalCents,
+                                        records: store.purchases) else {
+            return "Approval is no longer valid. Reopen the checkout and review the current total."
+        }
+        do {
+            let result = try await browser.active.submitApprovedOrder(review)
+            var entry = PurchaseRecord(
+                chatID: thread.id, merchant: "Amazon.com",
+                productName: review.productName, productURL: review.productURL,
+                description: "Amazon browser checkout",
+                variant: review.variant, quantity: review.quantity,
+                currency: review.currency, totalCents: review.totalCents,
+                status: result.status, orderID: result.orderID,
+                orderURL: result.orderURL
+            )
+            if result.status == "confirmed" { entry.confirmedAt = .now }
+            entry.note = result.explanation
+            store.save(entry)
+            store.save(ToolAudit(tool: "browser_place_order",
+                                 detail: review.productName + " · " + review.totalDescription,
+                                 approved: true,
+                                 result: result.status + ": " + result.explanation))
+            let message = (result.status == "confirmed"
+                ? "Amazon confirmed your order."
+                : "Order submission was NOT verified; do not attempt it again before checking Amazon Your Orders.") +
+                " Product: " + review.productName + ". Total: " +
+                review.totalDescription + ". " + result.explanation
+            _ = store.append(role: "assistant", text: message, to: thread)
+            return message
+        } catch {
+            store.save(ToolAudit(tool: "browser_place_order",
+                                 detail: review.productName,
+                                 approved: true, result: error.localizedDescription))
+            return "The order was not confirmed: " + error.localizedDescription +
+                " Check Amazon Your Orders before attempting another submission."
         }
     }
 
