@@ -65,6 +65,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published var orderSubmissionRequested = false
     @Published var lastProductURL = ""
     @Published var lastProductTitle = ""
+    @Published var lastProductDescription = ""
     @Published var orderSubmissionAttempted = false
 
     var isAmazonProductPage: Bool {
@@ -284,7 +285,10 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             });
           const roots=[document.querySelector('main'),document.querySelector('article'),document.body].filter(Boolean);
           const text=roots.map(e=>e.innerText||'').sort((a,b)=>b.length-a.length)[0]||'';
-          return {url:location.href,title:document.title||'',text:text.slice(0,20000),links:links,controls:controls};
+          const productSummary=document.querySelector('#feature-bullets')?.innerText ||
+            document.querySelector('#productDescription')?.innerText || '';
+          return {url:location.href,title:document.title||'',text:text.slice(0,20000),
+            productSummary:productSummary.slice(0,460),links:links,controls:controls};
         })()
         """#
         do {
@@ -297,6 +301,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                let safe = Self.safeURL(currentURL) {
                 lastProductURL = safe.absoluteString
                 lastProductTitle = title
+                lastProductDescription = (state["productSummary"] as? String ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
             }
             links = ((state["links"] as? [[String: String]]) ?? []).map {
                 BrowserElement(id: $0["id"] ?? "", text: $0["text"] ?? "",
