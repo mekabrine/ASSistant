@@ -7,11 +7,11 @@ struct AgentResponse {
     var browserSteps: Int
 }
 
-/// Foreground agent loop. Browser navigation is read-only and bounded.
+/// Foreground agent loop. Browser actions are policy-gated and bounded.
 /// Native actions still require the ChatView approval sheet.
 @MainActor
 enum AgentEngine {
-    static let defaultMaximumSteps = 10
+    static let defaultMaximumSteps = 18
 
     static let webInstructions = """
     You are a useful agent with access to a REAL foreground web browser.
@@ -33,6 +33,12 @@ enum AgentEngine {
     <assistant_tool>{"name":"browser_tabs"}</assistant_tool>
     <assistant_tool>{"name":"browser_switch","browserID":"UUID_FROM_browser_tabs"}</assistant_tool>
     <assistant_tool>{"name":"browser_request_handoff","details":"Please sign in or complete the verification on this page."}</assistant_tool>
+    <assistant_tool>{"name":"browser_select_variant","category":"color","value":"pink"}</assistant_tool>
+    <assistant_tool>{"name":"browser_select_variant","category":"size","value":"medium"}</assistant_tool>
+    <assistant_tool>{"name":"browser_add_to_cart"}</assistant_tool>
+    <assistant_tool>{"name":"browser_prepare_checkout"}</assistant_tool>
+    <assistant_tool>{"name":"browser_checkout_review"}</assistant_tool>
+    <assistant_tool>{"name":"browser_place_order"}</assistant_tool>
     browser_search: public search; site may be "amazon".
     browser_open: a PUBLIC HTTPS URL.
     browser_follow: one previously observed link ID from the CURRENT page snapshot.
@@ -48,10 +54,21 @@ enum AgentEngine {
     when they tap Done — Return control to AI.
     Browsers keep site sessions on device. Do not extract passwords, 2FA codes,
     cookies or authentication tokens to the model. Avoid arbitrary account writes.
-    These read-only actions are automatic while enabled; they are audited.
-    Do not use the browser to purchase, send messages, post, submit forms, change accounts,
-    add items to carts, or bypass login/CAPTCHA. The user takes over for those actions.
-    When finished, respond normally with direct source links and concrete findings.
+    Shopping autonomy is set by the user and checked by the app for each tool:
+    level 0: read/search/navigation; level 1: choose color/size/style; level 2: add to cart;
+    level 3: open checkout and inspect totals; level 4: request final order placement.
+    The order-placement tool ALWAYS asks the user to approve that exact retailer and live total.
+    Do not read or fill payment credentials, addresses, 2FA codes, or sensitive form fields.
+    Only Amazon.com US shopping workflows are automated; others require human takeover.
+    Do not click Buy Now, Place Order, Subscribe, or other binding payment controls with
+    general browser tools. For actual purchase requests, proceed until the checkout
+    review and propose browser_place_order when the user explicitly requested a purchase.
+    If checkout cannot be verified, request human help and never claim a purchase succeeded.
+    These actions are audited. Do not submit unrelated forms, change accounts, or bypass CAPTCHA.
+    Finish EVERY user-requested step (including the LAST one) before describing it as done.
+    A searched listing is NOT an opened product page; a color mentioned is NOT selected.
+    An Add to Cart click without confirmation is NOT a verified cart change.
+    When finished, respond with direct source links and concrete observations.
     Keep source URLs in answers. If an item isn't verified, say so.
     """
 
@@ -111,8 +128,10 @@ enum AgentEngine {
         messages[0].content += "\n" + AccountAgentTools.instructions(allowedTools: enabledAccounts)
         messages[0].content += "\n" + MemoryDirectory.instructions
         let configured = UserDefaults.standard.object(forKey: "agentMaxSteps") as? Int ?? defaultMaximumSteps
-        let maxSteps = max(3, min(20, configured))
+        let maxSteps = max(3, min(40, configured))
         var steps = 0
+        let shoppingGoal = ShoppingGoal(prompt: prompt)
+        var completionRetries = 0
         let normalized = prompt.lowercased()
         if ["what do you remember", "list my memories", "show my memories",
             "all my memories", "saved memories"].contains(where: normalized.contains) {
@@ -153,7 +172,7 @@ enum AgentEngine {
             }
         }
 
-        for turn in 0..<(maxSteps + 1) {
+        for turn in 0..<(maxSteps + 4) {
             try Task.checkCancellation()
             guard browser.currentChatID == chat.id else { throw CancellationError() }
             onStatus(turn == 0 ? "Thinking…" : "Reading findings…")
@@ -164,7 +183,23 @@ enum AgentEngine {
                 let clean = ToolRouter.cleanedResponse(result)
                     .replacingOccurrences(of: "[[BUILD_HTMLAPP]]", with: "")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-                return AgentResponse(text: clean, pendingTool: nil,
+                let missing = enableWeb && shoppingGoal.hasShoppingObjectives
+                    ? shoppingGoal.missing(in: browser.active) : []
+                if !missing.isEmpty, steps < maxSteps, completionRetries < 3 {
+                    completionRetries += 1
+                    onStatus("Finishing the last requested browser step…")
+                    messages.append(LLMMessage(role: "assistant", content: result))
+                    messages.append(LLMMessage(role: "user", content:
+                        "The original user request is NOT complete. Current verified missing steps: " +
+                        missing.joined(separator: " ") +
+                        " Issue the NEXT real browser tool now; don't merely describe the action. " +
+                        "If the shopping policy or website blocks you, state that explicitly."))
+                    continue
+                }
+                let suffix = missing.isEmpty ? "" :
+                    "\n\nUnfinished requested actions: " + missing.joined(separator: " ") +
+                    " You may increase autonomy in Settings or continue in the live browser."
+                return AgentResponse(text: clean + suffix, pendingTool: nil,
                                      wantsHTMLApp: result.contains("[[BUILD_HTMLAPP]]") ||
                                         wantsGeneratedApp(prompt),
                                      browserSteps: steps)
@@ -243,6 +278,53 @@ enum AgentEngine {
                     "\nAnswer the user's request using only this data; never reveal tokens."))
                 continue
             }
+            if tool.name.hasPrefix("browser_"),
+               ShoppingPolicy.requiredLevel(for: tool.name) > 0 {
+                guard ShoppingPolicy.canRun(tool.name) else {
+                    return AgentResponse(text:
+                        "Shopping action requires autonomy level " +
+                        String(ShoppingPolicy.requiredLevel(for: tool.name)) +
+                        ", but Settings currently allows level " + String(ShoppingPolicy.level) +
+                        ". Change Settings → Agent autonomy if you want this action.",
+                        pendingTool: nil, wantsHTMLApp: false, browserSteps: steps)
+                }
+                guard ShoppingPolicy.explicitIntent(tool.name, prompt: prompt) else {
+                    return AgentResponse(text:
+                        "I did not change the cart or checkout because the original request did not authorize that shopping action.",
+                        pendingTool: nil, wantsHTMLApp: false, browserSteps: steps)
+                }
+                guard ShoppingPolicy.supportedMerchant(browser.active.web.url) else {
+                    return AgentResponse(text:
+                        "Automated shopping changes are supported only on Amazon.com. " +
+                        "You can finish this step using the full-screen browser.",
+                        pendingTool: nil, wantsHTMLApp: false, browserSteps: steps)
+                }
+            }
+            if tool.name == "browser_place_order" {
+                guard enableWeb, steps < maxSteps else {
+                    return AgentResponse(text: "The browser is disabled or the step limit was reached.",
+                                         pendingTool: nil, wantsHTMLApp: false, browserSteps: steps)
+                }
+                do {
+                    let review = try await browser.active.inspectCheckout()
+                    guard review.totalCents <= ShoppingPolicy.maxOrderCents else {
+                        return AgentResponse(text:
+                            "The order total exceeds your configured per-order spending cap.",
+                            pendingTool: nil, wantsHTMLApp: false, browserSteps: steps)
+                    }
+                    browser.active.orderSubmissionRequested = true
+                    return AgentResponse(text:
+                        "Amazon checkout is ready for your review. " +
+                        "The visible total is " + review.totalDescription +
+                        ". No order has been placed; check and approve the purchase card.",
+                        pendingTool: tool, wantsHTMLApp: false, browserSteps: steps)
+                } catch {
+                    return AgentResponse(text:
+                        "Cannot offer order approval: " + error.localizedDescription +
+                        " Finish the missing checkout information in the browser.",
+                        pendingTool: nil, wantsHTMLApp: false, browserSteps: steps)
+                }
+            }
             guard tool.name.hasPrefix("browser_") else {
                 return AgentResponse(text: cleaned, pendingTool: tool,
                                      wantsHTMLApp: result.contains("[[BUILD_HTMLAPP]]") || wantsGeneratedApp(prompt),
@@ -278,6 +360,21 @@ enum AgentEngine {
                     observation = try await browser.active.submitSearch(id: tool.linkID ?? "")
                 case "browser_scroll":
                     observation = try await browser.active.scrollDown()
+                case "browser_select_variant":
+                    observation = try await browser.active.selectVariant(
+                        category: tool.category ?? "color",
+                        value: tool.value ?? tool.text ?? "")
+                case "browser_add_to_cart":
+                    observation = try await browser.active.addToCart()
+                case "browser_prepare_checkout":
+                    observation = try await browser.active.prepareCheckout()
+                case "browser_checkout_review":
+                    let review = try await browser.active.inspectCheckout()
+                    observation = "Amazon checkout review: " +
+                        review.productName + "; " + review.variant +
+                        "; total " + review.totalDescription +
+                        ". This is NOT an order confirmation. " +
+                        "If the user requested purchasing, call browser_place_order next."
                 case "browser_new":
                     let session = browser.newBrowser()
                     if let url = tool.url, !url.isEmpty {
