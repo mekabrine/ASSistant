@@ -866,17 +866,24 @@ struct ChatView: View {
                                         records: store.purchases) else {
             return "Approval is no longer valid. Reopen the checkout and review the current total."
         }
+        // Write an unverified attempt *before* invoking the payment button.
+        // An app termination mid-checkout must never leave no audit trail.
+        var entry = PurchaseRecord(
+            chatID: thread.id, merchant: "Amazon.com",
+            productName: review.productName, productURL: review.productURL,
+            description: review.productDescription,
+            variant: review.variant, quantity: review.quantity,
+            currency: review.currency, totalCents: review.totalCents,
+            status: "submissionUnverified"
+        )
+        entry.note = "User approved this checkout total. Submission or retailer confirmation not yet verified."
+        store.save(entry)
         do {
             let result = try await browser.active.submitApprovedOrder(review)
-            var entry = PurchaseRecord(
-                chatID: thread.id, merchant: "Amazon.com",
-                productName: review.productName, productURL: review.productURL,
-                description: review.productDescription,
-                variant: review.variant, quantity: review.quantity,
-                currency: review.currency, totalCents: review.totalCents,
-                status: result.status, orderID: result.orderID,
-                orderURL: result.orderURL
-            )
+            entry.status = result.status
+            entry.orderID = result.orderID
+            entry.orderURL = result.orderURL
+            entry.updatedAt = .now
             if result.status == "confirmed" { entry.confirmedAt = .now }
             entry.note = result.explanation
             store.save(entry)
@@ -892,11 +899,21 @@ struct ChatView: View {
             _ = store.append(role: "assistant", text: message, to: thread)
             return message
         } catch {
+            // If no click happened, it is safe to report a rejected attempt.
+            // Otherwise conservatively reserve the amount until verified.
+            if !browser.active.orderSubmissionAttempted {
+                entry.status = "notSubmitted"
+            }
+            entry.updatedAt = .now
+            entry.note = error.localizedDescription +
+                (entry.status == "submissionUnverified"
+                    ? " Check Amazon Your Orders before another attempt."
+                    : " No order submission was attempted.")
+            store.save(entry)
             store.save(ToolAudit(tool: "browser_place_order",
                                  detail: review.productName,
-                                 approved: true, result: error.localizedDescription))
-            return "The order was not confirmed: " + error.localizedDescription +
-                " Check Amazon Your Orders before attempting another submission."
+                                 approved: true, result: entry.note))
+            return "The order was not confirmed: " + entry.note
         }
     }
 
