@@ -67,6 +67,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published var lastProductTitle = ""
     @Published var lastProductDescription = ""
     @Published var orderSubmissionAttempted = false
+    var variationSelectionInProgress = false
 
     var isAmazonProductPage: Bool {
         guard ShoppingPolicy.amazonHost(web.url) else { return false }
@@ -299,6 +300,14 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             pageText = (state["text"] as? String) ?? ""
             if isAmazonProductPage,
                let safe = Self.safeURL(currentURL) {
+                let previousPath = Self.safeURL(lastProductURL)?.path
+                if !variationSelectionInProgress, let previousPath,
+                   previousPath != safe.path {
+                    selectedVariants = [:]
+                    addedToCart = false
+                    orderSubmissionRequested = false
+                    orderSubmissionAttempted = false
+                }
                 lastProductURL = safe.absoluteString
                 lastProductTitle = title
                 lastProductDescription = (state["productSummary"] as? String ?? "")
