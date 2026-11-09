@@ -212,7 +212,7 @@ private struct ContentUnavailablePurchases: View {
         VStack(alignment: .leading, spacing: 8) {
             Label("No recorded purchases", systemImage: "bag")
                 .font(.headline)
-            Text("When you approve a checkout in ASSistant, it will record the product, total, date, and verification status here.")
+            Text("When you approve a checkout in ASSistant, it records the product, total, date, and verification status here. These records may sync if you enabled iCloud for app data.")
                 .font(.subheadline).foregroundStyle(.secondary)
         }
         .padding(.vertical, 12)
