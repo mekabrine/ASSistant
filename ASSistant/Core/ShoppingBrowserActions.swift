@@ -112,6 +112,8 @@ extension BrowserSession {
           } finally {window.__assistantAutomation=false}
         }
         """#
+        variationSelectionInProgress = true
+        defer { variationSelectionInProgress = false }
         let result = try await shoppingDictionary("(" + js + ")(" + args + ")")
         guard result["ok"] as? Bool == true else { throw ShoppingBrowserError.missingVariant }
         try Task.checkCancellation()
