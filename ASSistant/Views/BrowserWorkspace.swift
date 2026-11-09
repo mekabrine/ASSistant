@@ -180,7 +180,7 @@ final class BrowserWorkspace: ObservableObject {
     @discardableResult
     func newBrowser() -> BrowserSession {
         if sessions.count >= 6,
-           let old = sessions.first(where: { $0.id != selectedID && !$0.activeAgent }) {
+           let old = sessions.first(where: { $0.id != selectedID && !$0.activeAgent && !$0.orderSubmissionRequested }) {
             old.close()
             observers[old.id] = nil
             tabChat[old.id] = nil
