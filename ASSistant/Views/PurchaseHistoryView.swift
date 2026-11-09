@@ -119,7 +119,7 @@ struct PurchaseHistoryView: View {
                 Text(statusTitle(record.status))
             }
             .font(.caption).fontWeight(.semibold)
-            .foregroundStyle(record.status == "confirmed" ? .green : .orange)
+            .foregroundStyle(record.status == "confirmed" ? Color.green : Color.orange)
 
             if let orderID = record.orderID {
                 Text("Order #\(orderID)").font(.caption).textSelection(.enabled)
