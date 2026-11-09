@@ -22,11 +22,12 @@ struct ProposedTool: Codable, Identifiable {
     var browserID: String?
     var days: Int?
     var offset: Int?
+    var value: String?
 
     enum CodingKeys: String, CodingKey {
         case name, title, details, text, at, end, url, linkID, site,
              recipient, subject, query, uri, category, period, memoryID,
-             limit, browserID, days, offset
+             limit, browserID, days, offset, value
     }
 }
 
@@ -37,6 +38,8 @@ enum ToolRouter {
         "browser_search", "browser_open", "browser_read", "browser_follow",
         "browser_fill_search", "browser_submit_search", "browser_scroll",
         "browser_new", "browser_switch", "browser_tabs", "browser_request_handoff",
+        "browser_select_variant", "browser_add_to_cart", "browser_prepare_checkout",
+        "browser_checkout_review", "browser_place_order",
         "memory_list", "memory_get", "memory_save", "memory_search",
         "gmail_search", "gmail_read", "spotify_search", "spotify_now_playing",
         "spotify_playlists", "gmail_send",
