@@ -871,7 +871,7 @@ struct ChatView: View {
             var entry = PurchaseRecord(
                 chatID: thread.id, merchant: "Amazon.com",
                 productName: review.productName, productURL: review.productURL,
-                description: "Amazon browser checkout",
+                description: review.productDescription,
                 variant: review.variant, quantity: review.quantity,
                 currency: review.currency, totalCents: review.totalCents,
                 status: result.status, orderID: result.orderID,
