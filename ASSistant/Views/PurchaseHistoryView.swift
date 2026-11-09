@@ -112,7 +112,7 @@ struct PurchaseHistoryView: View {
                     .font(.caption)
                 }
                 Button {
-                    openOrderHistory()
+                    openOrderHistory(preferredURL: record.orderURL)
                 } label: {
                     Label("Cancel / Return", systemImage: "arrow.uturn.backward.circle")
                 }
@@ -161,15 +161,22 @@ struct PurchaseHistoryView: View {
         }
     }
 
-    private func openOrderHistory() {
-        // Use ASSistant's own signed-in WKWebView session rather than Safari,
-        // because website cookies are deliberately app-scoped.
+    private func openOrderHistory(preferredURL: String? = nil) {
+        // Use ASSistant's signed-in WebKit state and open verified order details
+        // when possible; fall back to the retailer's standard order history.
+        let official = "https://www.amazon.com/gp/your-account/order-history"
+        let destination: String
+        if let preferredURL, let candidate = BrowserSession.safeURL(preferredURL),
+           ShoppingPolicy.amazonHost(candidate),
+           candidate.path.contains("order-details") {
+            destination = candidate.absoluteString
+        } else { destination = official }
         orderBrowserOpen = true
         browser.fullScreen = true
         let tab = browser.newBrowser()
         Task {
             do {
-                _ = try await tab.navigate("https://www.amazon.com/gp/your-account/order-history")
+                _ = try await tab.navigate(destination)
             } catch {
                 errorMessage = error.localizedDescription
             }
