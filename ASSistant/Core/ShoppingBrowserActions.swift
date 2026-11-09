@@ -349,7 +349,10 @@ extension BrowserSession {
             throw ShoppingBrowserError.missingOrderButton
         }
         for _ in 0..<4 {
-            try await Task.sleep(nanoseconds: 1_000_000_000)
+            // A canceled task after a payment click must still return an
+            // unverified outcome; it must not erase the attempted order log.
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            if Task.isCancelled { break }
             let observation = try? await shoppingDictionary(#"""
             (() => {
               const text=(document.body?.innerText||'').slice(0,12000);
