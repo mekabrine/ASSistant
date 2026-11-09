@@ -61,6 +61,14 @@ Google and Spotify require app registration and OAuth client IDs to work; the so
 - **Manual-only unsigned IPA:** `.github/workflows/build-unsigned-ipa.yml` triggers on **workflow_dispatch only**. It generates a project with XcodeGen, parses Swift syntax, builds a device app without signing, checks deployment version, packages `Payload/ASSistant.app`, and uploads `ASSistant-unsigned.ipa`. There is a **manual opt-in** `run_simulator_smoke_test` input for running unit tests and launching on a simulator; it is **off by default**. No automatic build triggers are configured.
 - Unit test source covering key memory and HTMLApp link behavior.
 
+## Agentic Amazon shopping and purchase history (new source)
+
+- **Settings → Agent autonomy and shopping:** Five-level control from research-only to purchase requests, with USD per-order and monthly spending caps. Browsing is always bounded by tool permissions. Even at the highest level, the user must approve each specific Amazon order and current total.
+- **More reliable multi-step browsing:** Amazon-first product search with Google/Bing/DuckDuckGo fallback; verified color/size/style/quantity selections, Add to Cart, checkout inspection, and a completion checker for requested final steps. Programmatic agent clicks no longer automatically trigger human takeover.
+- **Real checkout review and safe logging:** A one-time order approval sheet uses the live Amazon checkout total. The order total, product description, link, selected variant and date are logged in Settings → Purchases. Unverified submissions are retained as uncertain instead of reported as successful or automatically retried.
+- **Order management:** Purchase entries link to Amazon's signed-in Your Orders/order-details screen to cancel or return when the retailer allows it. Updating the local history does not itself cancel an Amazon order.
+- **Prototype status:** Amazon's markup changes and checkout requires an actual signed-in browser; no universal Amazon buyer API is assumed. New commerce code needs a manual Xcode/Actions build and human-controlled testing before use with real money. See [docs/SHOPPING_AUTONOMY.md](docs/SHOPPING_AUTONOMY.md).
+
 ## How to build manually
 
 1. On a Mac with Xcode and XcodeGen installed, run `xcodegen generate` from repository root.
@@ -79,7 +87,7 @@ Google and Spotify require app registration and OAuth client IDs to work; the so
 
 ## Prototype limitations and incomplete features
 
-- An earlier version **built successfully** in GitHub Actions on November 8, but **crashes on launch** were previously reported. Subsequent browser, voice, memory and sidebar changes have not been built or tested. The exact crash requires a device crash log; see `docs/CLAUDE_SPEC_ADOPTION.md`.
+- A manual unsigned IPA build for commit `08e9110` succeeded on November 8, 2026. The subsequent shopping/autonomy implementation has **not** been compiled or device-tested. Earlier device launch crashes were reported; successful compilation does not prove runtime behavior. See `docs/CLAUDE_SPEC_ADOPTION.md`.
 - CloudKit sync is wired into persistence, but cross-device conflict handling, CloudKit production schema deployment, and entitlement provisioning are not validated.
 - Conversation message bodies and HTML app snapshots are stored as generic JSON blobs in Core Data; very large items may exceed CloudKit record limits. Migrate large attachments to CloudKit assets or bounded file storage.
 - Full visual image-model requests, true background autonomous execution, browser automation, MCP servers, complete multimodal tool calling, multi-agent collaboration, a marketplace and push server are not part of this prototype. Scheduled **local notifications** work without a cloud worker, but iOS will not run arbitrary AI agents continually in the background.
