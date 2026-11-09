@@ -31,8 +31,11 @@ struct PurchaseApprovalView: View {
                         if !review.variant.isEmpty {
                             Text(review.variant).font(.subheadline)
                         }
-                        Link("Open product listing", destination: URL(string: review.productURL)!)
-                            .font(.caption)
+                        if let productURL = URL(string: review.productURL),
+                           BrowserSession.safeURL(review.productURL) != nil {
+                            Link("Open product listing", destination: productURL)
+                                .font(.caption)
+                        }
                         Divider()
                         Text("Visible order total (shipping and taxes included when shown)")
                             .font(.caption).foregroundStyle(.secondary)
