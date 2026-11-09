@@ -798,26 +798,26 @@ struct ChatView: View {
                 }
                 if let tool = outcome.pendingTool {
                     if tool.name == "browser_place_order" {
-                        guard store.agent(for: thread).allowedTools.contains("web"),
-                              ShoppingPolicy.canRun(tool.name),
-                              browser.currentChatID == thread.id else {
+                        if store.agent(for: thread).allowedTools.contains("web") &&
+                           ShoppingPolicy.canRun(tool.name) &&
+                           browser.currentChatID == thread.id {
+                            do {
+                                let review = try await browser.active.inspectCheckout()
+                                if ShoppingPolicy.canApprove(totalCents: review.totalCents,
+                                                              records: store.purchases) {
+                                    checkoutReview = review
+                                } else {
+                                    _ = store.append(role: "assistant", text:
+                                        "The live order total exceeds your shopping spending limits. Nothing was submitted.", to: thread)
+                                }
+                            } catch {
+                                _ = store.append(role: "assistant", text:
+                                    "Unable to verify the Amazon checkout for approval: " +
+                                    error.localizedDescription, to: thread)
+                            }
+                        } else {
                             _ = store.append(role: "assistant", text:
                                 "Checkout approval was blocked by your web-tool permissions or shopping autonomy setting.", to: thread)
-                            return
-                        }
-                        do {
-                            let review = try await browser.active.inspectCheckout()
-                            if ShoppingPolicy.canApprove(totalCents: review.totalCents,
-                                                          records: store.purchases) {
-                                checkoutReview = review
-                            } else {
-                                _ = store.append(role: "assistant", text:
-                                    "The live order total exceeds your shopping spending limits. Nothing was submitted.", to: thread)
-                            }
-                        } catch {
-                            _ = store.append(role: "assistant", text:
-                                "Unable to verify the Amazon checkout for approval: " +
-                                error.localizedDescription, to: thread)
                         }
                     } else {
                         let category = ToolRouter.category(for: tool.name)
