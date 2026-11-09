@@ -241,6 +241,24 @@ extension BrowserSession {
                  label.includes('buy now')){selector=sel;break;}
             }
           }
+          if(!selector) {
+            // Some Amazon checkout layouts render a semantic button without
+            // one of the historical IDs. Limit fallback to explicitly named,
+            // visible submit controls on the verified checkout page.
+            const candidates=[...document.querySelectorAll(
+              'button,input[type="submit"],[role="button"]'
+            )];
+            const found=candidates.find(e=>{
+              if(!e.getClientRects().length || e.disabled)return false;
+              const label=(e.value||e.getAttribute('aria-label')||
+                e.innerText||'').trim().toLowerCase();
+              return /^(place (your |the )?order|buy now)(\b|\s)/i.test(label);
+            });
+            if(found){
+              found.setAttribute('data-assistant-order-submit','true');
+              selector='[data-assistant-order-submit="true"]';
+            }
+          }
           if(!selector)return {ok:false,why:'missingButton'};
           const sources=[...document.querySelectorAll(
             '#subtotals-marketplace-table,.grand-total-price,#orderSummary,'+
@@ -249,7 +267,7 @@ extension BrowserSession {
           sources.push(document.body?.innerText?.slice(0,24000)||'');
           let total='';
           for(const source of sources){
-            const match=source.match(/(?:order\s*total|grand\s*total)[\s\S]{0,85}?(\$\s*[\d,]+\.\d{2})/i);
+            const match=source.match(/(?:order\s*total|grand\s*total)\s*:?\s*(?:USD\s*)?(\$\s*[\d,]+\.\d{2})/i);
             if(match){total=match[1];break;}
           }
           const item=document.querySelector('a[href*="/dp/"],a[href*="/gp/product/"]');
@@ -319,7 +337,8 @@ extension BrowserSession {
         let selector = approved.orderButtonSelector
         let allowed = ["input[name=\"placeYourOrder1\"]", "#submitOrderButtonId input",
             "#submitOrderButtonId .a-button-input", "#bottomSubmitOrderButtonId input",
-            "#placeYourOrder", "[data-testid=\"place-order-button\"]"]
+            "#placeYourOrder", "[data-testid=\"place-order-button\"]",
+            "[data-assistant-order-submit=\"true\"]"]
         guard allowed.contains(selector) else { throw ShoppingBrowserError.missingOrderButton }
         let encoded = String(decoding: try JSONEncoder().encode(selector), as: UTF8.self)
         orderSubmissionAttempted = true
