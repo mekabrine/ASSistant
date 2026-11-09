@@ -46,7 +46,8 @@ enum ShoppingPolicy {
 
     static func explicitIntent(_ tool: String, prompt: String) -> Bool {
         let p = prompt.lowercased()
-        let buying = ["buy ", "purchase ", "order ", "checkout", "check out", "pay for "]
+        let buying = ["buy ", "buy now", "purchase ", "make a purchase",
+                      "order ", "place order", "checkout", "check out", "pay for "]
             .contains(where: p.contains)
         switch tool {
         case "browser_select_variant":
@@ -115,7 +116,8 @@ struct ShoppingGoal {
         size = requested(["size "])
         needsCart = ["add to cart", "add it to cart", "put in cart", "put it in my cart"]
             .contains(where: p.contains)
-        needsCheckout = ["place the order", "buy it", "buy me", "purchase it",
+        needsCheckout = ["place order", "place the order", "buy it", "buy now",
+                         "buy me", "purchase it",
                          "purchase the", "purchase me", "buy the ", "buy a ",
                          "order the ", "order me", "checkout for",
                          "check out and buy"].contains(where: p.contains)
