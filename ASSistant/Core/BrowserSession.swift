@@ -60,6 +60,19 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published var lastError = ""
     @Published var progress: Double = 0
     @Published var thumbnail: UIImage?
+    @Published var selectedVariants: [String: String] = [:]
+    @Published var addedToCart = false
+    @Published var orderSubmissionRequested = false
+    @Published var lastProductURL = ""
+    @Published var lastProductTitle = ""
+    @Published var orderSubmissionAttempted = false
+
+    var isAmazonProductPage: Bool {
+        guard ShoppingPolicy.amazonHost(web.url) else { return false }
+        let path = web.url?.path.lowercased() ?? ""
+        return path.contains("/dp/") || path.contains("/gp/product/") ||
+            path.contains("/gp/aw/d/")
+    }
 
     var onPageUpdated: (() -> Void)?
     var pendingRestoredScrollY: CGFloat?
@@ -273,6 +286,11 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             currentURL = (state["url"] as? String) ?? web.url?.absoluteString ?? ""
             title = (state["title"] as? String) ?? "Website"
             pageText = (state["text"] as? String) ?? ""
+            if isAmazonProductPage,
+               let safe = Self.safeURL(currentURL) {
+                lastProductURL = safe.absoluteString
+                lastProductTitle = title
+            }
             links = ((state["links"] as? [[String: String]]) ?? []).map {
                 BrowserElement(id: $0["id"] ?? "", text: $0["text"] ?? "",
                                href: $0["href"] ?? "", kind: "link")
