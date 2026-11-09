@@ -525,4 +525,31 @@ final class ASSistantTests: XCTestCase {
         XCTAssertEqual(review.variant, "color: pink")
     }
 
+    func testShoppingApprovalRequiresLevelAndBudget() {
+        let prefs = UserDefaults.standard
+        let keys = ["shoppingAutonomyLevel", "shoppingOrderCap", "shoppingMonthlyCap"]
+        let original = keys.map { prefs.object(forKey: $0) }
+        defer {
+            for (key, value) in zip(keys, original) {
+                if let value { prefs.set(value, forKey: key) }
+                else { prefs.removeObject(forKey: key) }
+            }
+        }
+        prefs.set(4, forKey: "shoppingAutonomyLevel")
+        prefs.set(30.0, forKey: "shoppingOrderCap")
+        prefs.set(50.0, forKey: "shoppingMonthlyCap")
+        var prior = PurchaseRecord(
+            chatID: UUID(), merchant: "Amazon.com", productName: "Previous order",
+            productURL: "https://www.amazon.com/dp/EXAMPLE",
+            description: "Sample", totalCents: 2500, status: "confirmed"
+        )
+        XCTAssertTrue(ShoppingPolicy.canApprove(totalCents: 2000, records: [prior]))
+        XCTAssertFalse(ShoppingPolicy.canApprove(totalCents: 2700, records: [prior]))
+        XCTAssertFalse(ShoppingPolicy.canApprove(totalCents: 4500, records: []))
+        prefs.set(2, forKey: "shoppingAutonomyLevel")
+        XCTAssertFalse(ShoppingPolicy.canApprove(totalCents: 1000, records: []))
+        prior.status = "submissionUnverified"
+        XCTAssertEqual(ShoppingPolicy.monthSpentCents([prior]), 2500)
+    }
+
 }
