@@ -265,7 +265,21 @@ final class BrowserWorkspace: ObservableObject {
     }
 
     func stopAll() {
-        for tab in sessions { tab.stop() }
+        for tab in sessions {
+            tab.activeAgent = false
+            tab.stop()
+        }
+    }
+
+    func setAgentActivity(_ active: Bool, tabID: UUID? = nil) {
+        for tab in sessions { tab.activeAgent = false }
+        guard active else { return }
+        let targetID = tabID ?? selectedID
+        guard let targetID,
+              let tab = sessions.first(where: { $0.id == targetID }) else { return }
+        selectedID = targetID
+        tab.visible = true
+        tab.activeAgent = true
     }
 
     func list() -> String {
