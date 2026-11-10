@@ -90,7 +90,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         // from Safari and from the user's separate Google/Spotify OAuth tokens.
         config.websiteDataStore = .default()
         config.defaultWebpagePreferences.allowsContentJavaScript = true
-        web = WKWebView(frame: .zero, configuration: config)
+        web = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 640), configuration: config)
         super.init()
         web.navigationDelegate = self
         web.uiDelegate = self
