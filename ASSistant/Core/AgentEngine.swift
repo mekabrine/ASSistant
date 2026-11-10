@@ -386,12 +386,14 @@ enum AgentEngine {
                         "If the user requested purchasing, call browser_place_order next."
                 case "browser_new":
                     let session = browser.newBrowser()
+                    browser.setAgentActivity(true, tabID: session.id)
                     if let url = tool.url, !url.isEmpty {
                         _ = try await session.navigate(url)
                     }
                     observation = "Created browser \(session.id.uuidString). Current browser tabs:\n" + browser.list()
                 case "browser_switch":
                     let session = try browser.choose(tool.browserID)
+                    browser.setAgentActivity(true, tabID: session.id)
                     observation = "Switched to \(session.id.uuidString)\n" + browser.list()
                 case "browser_tabs":
                     observation = browser.list()
