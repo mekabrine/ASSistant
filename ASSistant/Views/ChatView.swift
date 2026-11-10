@@ -77,41 +77,13 @@ struct ChatView: View {
                                         .padding(.bottom, 18)
                                 }
                                 ForEach(currentMessages) { message in
-                                    MessageBubble(message: message,
-                                                  onEdit: message.role == "user" ? { editingMessage = message } : nil,
-                                                  onRegenerate: message.role == "assistant" ? { regenerate(message) } : nil,
-                                                  onChoice: message.role == "assistant" ? { selection in sendText(selection) } : nil)
-                                        .id(message.id)
+                                    messageRow(message)
                                 }
-                                ForEach(store.apps.filter { $0.chatID == current.id }) { app in
-                                    ChatHTMLAppCard(app: app,
-                                        onEdit: { editingInlineApp = app },
-                                        onPublish: { publishInlineApp(app) })
-                                        .id(app.id)
+                                ForEach(chatApps(for: current.id)) { app in
+                                    appRow(app)
                                 }
                                 if isLoading {
-                                    HStack(alignment: .top, spacing: 10) {
-                                        AssistantCharacterView(
-                                            state: AssistantCharacterState.resolve(
-                                                status: agentStatus,
-                                                browser: browser,
-                                                loading: isLoading,
-                                                callMode: showCallMode
-                                            ),
-                                            detail: agentStatus.isEmpty ? "Working on your request…" : agentStatus
-                                        )
-                                        .frame(width: 118, alignment: .leading)
-
-                                        Text(streaming.isEmpty
-                                             ? (agentStatus.isEmpty ? "Thinking…" : agentStatus)
-                                             : streaming)
-                                            .textSelection(.enabled)
-                                            .padding(12)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .background(Color.secondary.opacity(0.12),
-                                                        in: RoundedRectangle(cornerRadius: 14))
-                                    }
-                                    .id("stream")
+                                    liveAgentRow
                                 }
                                 if !errorText.isEmpty {
                                     Text(errorText).font(.footnote).foregroundColor(.red)
@@ -544,6 +516,76 @@ struct ChatView: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 6)
         .padding(.bottom, 4)
+    }
+
+    @ViewBuilder
+    private func messageRow(_ message: ChatMessage) -> some View {
+        if message.role == "user" {
+            MessageBubble(
+                message: message,
+                onEdit: { editingMessage = message },
+                onRegenerate: nil,
+                onChoice: nil
+            )
+            .id(message.id)
+        } else {
+            MessageBubble(
+                message: message,
+                onEdit: nil,
+                onRegenerate: { regenerate(message) },
+                onChoice: { selection in sendText(selection) }
+            )
+            .id(message.id)
+        }
+    }
+
+    private func chatApps(for id: UUID) -> [GeneratedApp] {
+        store.apps.filter { $0.chatID == id }
+    }
+
+    @ViewBuilder
+    private func appRow(_ app: GeneratedApp) -> some View {
+        ChatHTMLAppCard(
+            app: app,
+            onEdit: { editingInlineApp = app },
+            onPublish: { publishInlineApp(app) }
+        )
+        .id(app.id)
+    }
+
+    private var liveAgentState: AssistantCharacterState {
+        AssistantCharacterState.resolve(
+            status: agentStatus,
+            browser: browser,
+            loading: isLoading,
+            callMode: showCallMode
+        )
+    }
+
+    private var liveAgentDetail: String {
+        agentStatus.isEmpty ? "Working on your request…" : agentStatus
+    }
+
+    private var liveAgentText: String {
+        if !streaming.isEmpty { return streaming }
+        return agentStatus.isEmpty ? "Thinking…" : agentStatus
+    }
+
+    private var liveAgentRow: some View {
+        HStack(alignment: .top, spacing: 10) {
+            AssistantCharacterView(state: liveAgentState, detail: liveAgentDetail)
+                .frame(width: 118, alignment: .leading)
+
+            Text(liveAgentText)
+                .textSelection(.enabled)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    Color.secondary.opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: 14)
+                )
+        }
+        .id("stream")
     }
 
     private var welcomeCard: some View {
