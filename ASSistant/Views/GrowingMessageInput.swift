@@ -1,15 +1,14 @@
 import SwiftUI
 import UIKit
 
-/// A compact iOS 16 multiline input that grows only when its text needs
-/// another line. Its height comes from measured text content, never from the
-/// available parent height (which caused an empty editor to fill the screen).
+/// Compact multiline composer: 1 line initially, grows through 4 visual lines,
+/// then keeps its height and scrolls vertically. It always wraps horizontally.
 struct GrowingMessageInput: UIViewRepresentable {
     @Binding var text: String
     @Binding var measuredHeight: CGFloat
-    var maximumHeight: CGFloat = 176
 
-    static let minimumHeight: CGFloat = 44
+    static let verticalInset: CGFloat = 9
+    static let minimumHeight: CGFloat = 42
 
     func makeUIView(context: Context) -> UITextView {
         let view = UITextView()
@@ -17,84 +16,106 @@ struct GrowingMessageInput: UIViewRepresentable {
         view.font = UIFont.preferredFont(forTextStyle: .body)
         view.adjustsFontForContentSizeCategory = true
         view.backgroundColor = .clear
-        view.textContainerInset = UIEdgeInsets(top: 10, left: 8, bottom: 10, right: 8)
+        view.textContainerInset = UIEdgeInsets(
+            top: Self.verticalInset, left: 7,
+            bottom: Self.verticalInset, right: 7
+        )
         view.textContainer.lineFragmentPadding = 0
+        view.textContainer.widthTracksTextView = true
+        view.textContainer.heightTracksTextView = false
         view.isScrollEnabled = false
+        view.alwaysBounceVertical = false
+        view.alwaysBounceHorizontal = false
+        view.showsHorizontalScrollIndicator = false
+        view.showsVerticalScrollIndicator = true
         view.keyboardDismissMode = .interactive
         view.autocorrectionType = .yes
         view.smartInsertDeleteType = .yes
         view.accessibilityLabel = "Message"
+
+        // Critical: the editor must yield its horizontal intrinsic width inside
+        // the HStack so text wraps instead of pushing the send button offscreen.
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         view.setContentHuggingPriority(.required, for: .vertical)
         view.setContentCompressionResistancePriority(.required, for: .vertical)
-        context.coordinator.maximumHeight = maximumHeight
         return view
     }
 
     func updateUIView(_ uiView: UITextView, context: Context) {
-        context.coordinator.maximumHeight = maximumHeight
-        if uiView.text != text {
-            uiView.text = text
-        }
+        if uiView.text != text { uiView.text = text }
         uiView.font = UIFont.preferredFont(forTextStyle: .body)
         context.coordinator.measure(uiView)
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, measuredHeight: $measuredHeight,
-                    maximumHeight: maximumHeight)
+        Coordinator(text: $text, measuredHeight: $measuredHeight)
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
         @Binding var text: String
         @Binding var measuredHeight: CGFloat
-        var maximumHeight: CGFloat
 
-        init(text: Binding<String>, measuredHeight: Binding<CGFloat>,
-             maximumHeight: CGFloat) {
+        init(text: Binding<String>, measuredHeight: Binding<CGFloat>) {
             _text = text
             _measuredHeight = measuredHeight
-            self.maximumHeight = maximumHeight
         }
 
         func textViewDidChange(_ textView: UITextView) {
             text = textView.text
             measure(textView)
+            if textView.isScrollEnabled {
+                let end = NSRange(location: max(0, textView.text.utf16.count), length: 0)
+                textView.scrollRangeToVisible(end)
+            }
         }
 
-        func textViewDidEndEditing(_ textView: UITextView) {
-            measure(textView)
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            if textView.isScrollEnabled {
+                textView.scrollRangeToVisible(textView.selectedRange)
+            }
         }
 
         func measure(_ textView: UITextView) {
-            // Don't measure when UIKit has not yet assigned a usable width.
-            // Width determines wrapping and therefore the required height.
             let width = textView.bounds.width
-            guard width > 80 else { return }
+            guard width.isFinite, width > 80 else { return }
 
-            let required = textView.sizeThatFits(
-                CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+            let font = textView.font ?? UIFont.preferredFont(forTextStyle: .body)
+            let lineHeight = ceil(font.lineHeight)
+            let minHeight = max(GrowingMessageInput.minimumHeight,
+                                lineHeight + GrowingMessageInput.verticalInset * 2)
+            let maxHeight = lineHeight * 4 + GrowingMessageInput.verticalInset * 2
+
+            let fitting = textView.sizeThatFits(
+                CGSize(width: width, height: .greatestFiniteMagnitude)
             ).height
-            let target = min(maximumHeight, max(GrowingMessageInput.minimumHeight,
-                                                 ceil(required)))
-            let needsScroll = required > maximumHeight + 1
-            if textView.isScrollEnabled != needsScroll {
-                textView.isScrollEnabled = needsScroll
+            guard fitting.isFinite else { return }
+
+            let target = min(maxHeight, max(minHeight, ceil(fitting)))
+            let shouldScroll = fitting > maxHeight + 0.5
+
+            if textView.isScrollEnabled != shouldScroll {
+                textView.isScrollEnabled = shouldScroll
+                textView.alwaysBounceVertical = shouldScroll
             }
-            if abs(measuredHeight - target) > 1 {
-                // UIViewRepresentable.updateUIView must not synchronously mutate
-                // SwiftUI state. Dispatching to the next main turn is intentional.
-                DispatchQueue.main.async { [weak self, weak textView] in
-                    guard let self, let textView,
-                          textView.bounds.width > 80 else { return }
-                    let fresh = textView.sizeThatFits(
-                        CGSize(width: textView.bounds.width,
-                               height: CGFloat.greatestFiniteMagnitude)
-                    ).height
-                    let height = min(self.maximumHeight,
-                                     max(GrowingMessageInput.minimumHeight, ceil(fresh)))
-                    if abs(self.measuredHeight - height) > 1 {
-                        self.measuredHeight = height
-                    }
+
+            guard abs(measuredHeight - target) > 0.5 else { return }
+            DispatchQueue.main.async { [weak self, weak textView] in
+                guard let self, let textView else { return }
+                let width = textView.bounds.width
+                guard width.isFinite, width > 80 else { return }
+                let fresh = textView.sizeThatFits(
+                    CGSize(width: width, height: .greatestFiniteMagnitude)
+                ).height
+                guard fresh.isFinite else { return }
+                let font = textView.font ?? UIFont.preferredFont(forTextStyle: .body)
+                let lineHeight = ceil(font.lineHeight)
+                let minHeight = max(GrowingMessageInput.minimumHeight,
+                                    lineHeight + GrowingMessageInput.verticalInset * 2)
+                let maxHeight = lineHeight * 4 + GrowingMessageInput.verticalInset * 2
+                let next = min(maxHeight, max(minHeight, ceil(fresh)))
+                if abs(self.measuredHeight - next) > 0.5 {
+                    self.measuredHeight = next
                 }
             }
         }
