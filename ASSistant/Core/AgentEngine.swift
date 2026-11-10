@@ -350,6 +350,7 @@ enum AgentEngine {
             }
             try Task.checkCancellation()
             onStatus("Browser: " + tool.name.replacingOccurrences(of: "browser_", with: ""))
+            browser.setAgentActivity(true)
             var observation: String
             do {
                 switch tool.name {
@@ -406,13 +407,16 @@ enum AgentEngine {
                     observation = "Human returned control after page interaction:\n" + resumed
                 }
             } catch is CancellationError {
+                browser.setAgentActivity(false)
                 throw CancellationError()
             } catch BrowserFailure.userTookControl {
                 onStatus("Waiting for you to finish browsing…")
                 observation = try await browser.waitForHandoff()
             } catch {
+                browser.setAgentActivity(false)
                 observation = "Browser operation failed: " + error.localizedDescription
             }
+            browser.setAgentActivity(false)
             steps += 1
             onBrowserStep(tool.name, String(observation.prefix(450)))
             // Tool steps are data, not ChatMessage role=assistant text shown to users.
