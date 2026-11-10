@@ -105,19 +105,35 @@ struct ChatView: View {
                                     Text(errorText).font(.footnote).foregroundColor(.red)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
+                                Color.clear
+                                    .frame(height: 1)
+                                    .id("chat-bottom")
+
                             }
                             .padding()
                             .frame(maxWidth: 860)
                             .frame(maxWidth: .infinity)
                         }
                         .scrollDismissesKeyboard(.interactively)
+                        .onAppear {
+                            Task { @MainActor in
+                                await Task.yield()
+                                proxy.scrollTo("chat-bottom", anchor: .bottom)
+                            }
+                        }
+                        .onChange(of: chatID) { _ in
+                            Task { @MainActor in
+                                await Task.yield()
+                                proxy.scrollTo("chat-bottom", anchor: .bottom)
+                            }
+                        }
                         .onChange(of: currentMessages.count) { _ in
-                            if let last = currentMessages.last {
-                                withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                            withAnimation(.easeOut(duration: 0.18)) {
+                                proxy.scrollTo("chat-bottom", anchor: .bottom)
                             }
                         }
                         .onChange(of: streaming) { _ in
-                            proxy.scrollTo("stream", anchor: .bottom)
+                            proxy.scrollTo("chat-bottom", anchor: .bottom)
                         }
                     }
                     if let d = store.lastDiagnostic {
@@ -462,8 +478,7 @@ struct ChatView: View {
                             .allowsHitTesting(false)
                     }
                     GrowingMessageInput(text: $composer,
-                                        measuredHeight: $composerHeight,
-                                        maximumHeight: 176)
+                                        measuredHeight: $composerHeight)
                         .frame(height: composerHeight)
                 }
                 .background(Color.secondary.opacity(0.09),
