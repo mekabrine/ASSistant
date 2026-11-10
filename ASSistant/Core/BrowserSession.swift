@@ -81,6 +81,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     private var pending: CheckedContinuation<Void, Error>?
     private var navigationSequence = 0
+    private var thumbnailTask: Task<Void, Never>?
 
     init(tabID: UUID = UUID()) {
         self.id = tabID
@@ -324,6 +325,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                                placeholder: $0["placeholder"] ?? "")
             }
             status = "Page ready"
+            captureThumbnail()
             onPageUpdated?()
             let lowerText = pageText.lowercased()
             let needsPassword = controls.contains(where: { $0.inputType == "password" })
@@ -434,7 +436,9 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         guard !userControl else { throw BrowserFailure.userTookControl }
         _ = try await web.evaluateJavaScript("window.scrollBy(0, Math.min(900, window.innerHeight))")
         try? await Task.sleep(nanoseconds: 550_000_000)
-        return try await read()
+        let result = try await read()
+        captureThumbnail()
+        return result
     }
 
     func close() {
@@ -468,9 +472,19 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func captureThumbnail() {
-        web.takeSnapshot(with: nil) { [weak self] image, _ in
-            Task { @MainActor in
-                self?.thumbnail = image
+        thumbnailTask?.cancel()
+        thumbnailTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 140_000_000)
+            guard let self, !Task.isCancelled,
+                  self.web.bounds.width > 1, self.web.bounds.height > 1 else { return }
+            let config = WKSnapshotConfiguration()
+            config.rect = self.web.bounds
+            config.afterScreenUpdates = false
+            self.web.takeSnapshot(with: config) { [weak self] image, _ in
+                Task { @MainActor in
+                    guard let self, let image else { return }
+                    self.thumbnail = image
+                }
             }
         }
     }
