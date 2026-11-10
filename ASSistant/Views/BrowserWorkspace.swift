@@ -447,7 +447,17 @@ private struct BrowserDockContent: View {
                         .foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
-                if session.isLoading { ProgressView().controlSize(.mini) }
+                if session.activeAgent {
+                    Label("AI", systemImage: "sparkles")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.cyan)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.cyan.opacity(0.12), in: Capsule())
+                } else if session.isLoading {
+                    ProgressView().controlSize(.mini)
+                }
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
                     .font(.caption)
             }
@@ -459,10 +469,16 @@ private struct BrowserDockContent: View {
                     .frame(width: 244, height: 120)
                     .clipped()
                     .overlay(alignment: .bottomLeading) {
-                        Text("\(workspace.sessions.count) browsers")
-                            .font(.caption2).padding(5)
-                            .background(.regularMaterial, in: Capsule())
-                            .padding(5)
+                        HStack(spacing: 5) {
+                            Image(systemName: session.activeAgent ? "sparkles" : "globe")
+                            Text(session.activeAgent ? "AI using this page" :
+                                 "\(workspace.sessions.count) browsers")
+                        }
+                        .font(.caption2)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 5)
+                        .background(.regularMaterial, in: Capsule())
+                        .padding(5)
                     }
             } else {
                 HStack {
