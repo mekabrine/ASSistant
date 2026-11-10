@@ -8,6 +8,7 @@ enum AssistantCharacterState: Equatable {
     case speaking
     case working
 
+    @MainActor
     static func resolve(status: String, browser: BrowserWorkspace,
                         loading: Bool, callMode: Bool) -> AssistantCharacterState {
         let lower = status.lowercased()
