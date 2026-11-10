@@ -552,4 +552,51 @@ final class ASSistantTests: XCTestCase {
         XCTAssertEqual(ShoppingPolicy.monthSpentCents([prior]), 2500)
     }
 
+    @MainActor
+    func testBrowserDockRejectsNonFiniteCoordinates() {
+        let workspace = BrowserWorkspace()
+        workspace.moveDock(x: .nan, y: .infinity)
+        XCTAssertEqual(workspace.dockX, 0.72, accuracy: 0.0001)
+        XCTAssertEqual(workspace.dockY, 0.61, accuracy: 0.0001)
+        workspace.moveDock(x: -10, y: 10)
+        XCTAssertEqual(workspace.dockX, 0.1, accuracy: 0.0001)
+        XCTAssertEqual(workspace.dockY, 0.84, accuracy: 0.0001)
+    }
+
+    @MainActor
+    func testOffscreenBrowserHasSnapshotViewport() {
+        let tab = BrowserSession()
+        XCTAssertGreaterThan(tab.web.bounds.width, 1)
+        XCTAssertGreaterThan(tab.web.bounds.height, 1)
+        tab.close()
+    }
+
+    @MainActor
+    func testAssistantCharacterReflectsRealAgentState() {
+        let workspace = BrowserWorkspace()
+        XCTAssertEqual(
+            AssistantCharacterState.resolve(
+                status: "Thinking…", browser: workspace,
+                loading: true, callMode: false
+            ),
+            .thinking
+        )
+        workspace.awaitingHuman = true
+        XCTAssertEqual(
+            AssistantCharacterState.resolve(
+                status: "Browser: open", browser: workspace,
+                loading: true, callMode: false
+            ),
+            .waitingForUser
+        )
+        workspace.awaitingHuman = false
+        XCTAssertEqual(
+            AssistantCharacterState.resolve(
+                status: "Browser: search", browser: workspace,
+                loading: true, callMode: false
+            ),
+            .browsing
+        )
+    }
+
 }
