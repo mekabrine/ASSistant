@@ -172,8 +172,13 @@ final class BrowserWorkspace: ObservableObject {
     }
 
     func moveDock(x: Double, y: Double) {
+        guard x.isFinite, y.isFinite else {
+            dockX = 0.72
+            dockY = 0.61
+            return
+        }
         dockX = min(0.9, max(0.1, x))
-        dockY = min(0.86, max(0.12, y))
+        dockY = min(0.84, max(0.12, y))
         if let id = currentChatID { scheduleSave(id) }
     }
 
@@ -344,55 +349,72 @@ final class BrowserWorkspace: ObservableObject {
 @MainActor
 struct BrowserDock: View {
     @ObservedObject var workspace: BrowserWorkspace
-    @GestureState private var drag: CGSize = .zero
+    @State private var dragOffset: CGSize = .zero
+    @State private var dragging = false
 
     var body: some View {
         GeometryReader { geometry in
-            if workspace.anyVisible && !workspace.fullScreen {
+            if workspace.anyVisible && !workspace.fullScreen,
+               geometry.size.width > 10, geometry.size.height > 10 {
                 let width = geometry.size.width
                 let height = geometry.size.height
+                let safeX = finite(workspace.dockX, fallback: 0.72)
+                let safeY = finite(workspace.dockY, fallback: 0.61)
                 let minX = min(width / 2, 136.0)
                 let minY = min(height / 2, 88.0)
                 let maxX = max(minX, width - minX)
-                let maxY = max(minY, height - 235.0)
-                let centerX = clamp(CGFloat(workspace.dockX) * width + drag.width,
-                                    minX, maxX)
-                let centerY = clamp(CGFloat(workspace.dockY) * height + drag.height,
-                                    minY, maxY)
+                let maxY = max(minY, height - 225.0)
+                let baseX = clamp(CGFloat(safeX) * width, minX, maxX)
+                let baseY = clamp(CGFloat(safeY) * height, minY, maxY)
+                let centerX = clamp(baseX + dragOffset.width, minX, maxX)
+                let centerY = clamp(baseY + dragOffset.height, minY, maxY)
 
                 BrowserDockContent(workspace: workspace, session: workspace.active)
                     .padding(10)
                     .contentShape(RoundedRectangle(cornerRadius: 20))
+                    .scaleEffect(dragging ? 1.025 : 1)
+                    .shadow(radius: dragging ? 18 : 10, y: dragging ? 7 : 4)
                     .gesture(
-                        DragGesture(minimumDistance: 8)
-                            .updating($drag) { value, state, _ in
-                                state = value.translation
+                        DragGesture(minimumDistance: 6, coordinateSpace: .local)
+                            .onChanged { value in
+                                guard value.translation.width.isFinite,
+                                      value.translation.height.isFinite else { return }
+                                if !dragging { dragging = true }
+                                dragOffset = value.translation
                             }
                             .onEnded { value in
-                                let finalX = clamp(
-                                    CGFloat(workspace.dockX) * width + value.translation.width,
-                                    minX, maxX
+                                let dx = value.translation.width.isFinite ? value.translation.width : 0
+                                let dy = value.translation.height.isFinite ? value.translation.height : 0
+                                let finalX = clamp(baseX + dx, minX, maxX)
+                                let finalY = clamp(baseY + dy, minY, maxY)
+                                dragOffset = .zero
+                                dragging = false
+                                guard width.isFinite, height.isFinite, width > 1, height > 1,
+                                      finalX.isFinite, finalY.isFinite else { return }
+                                workspace.moveDock(
+                                    x: Double(finalX / width),
+                                    y: Double(finalY / height)
                                 )
-                                let finalY = clamp(
-                                    CGFloat(workspace.dockY) * height + value.translation.height,
-                                    minY, maxY
-                                )
-                                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                                    workspace.moveDock(x: Double(finalX / max(width, 1)),
-                                                       y: Double(finalY / max(height, 1)))
-                                }
-                                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             }
                     )
                     .position(x: centerX, y: centerY)
+                    .animation(.spring(response: 0.22, dampingFraction: 0.86),
+                               value: dragging)
                     .accessibilityHint("Drag to move; tap to open. Position is saved for this chat.")
                     .transition(.opacity.combined(with: .scale(scale: 0.94)))
             }
         }
+        .allowsHitTesting(workspace.anyVisible && !workspace.fullScreen)
     }
 
     private func clamp(_ value: CGFloat, _ lower: CGFloat, _ upper: CGFloat) -> CGFloat {
-        min(upper, max(lower, value))
+        guard value.isFinite, lower.isFinite, upper.isFinite else { return lower.isFinite ? lower : 0 }
+        return min(upper, max(lower, value))
+    }
+
+    private func finite(_ value: Double, fallback: Double) -> Double {
+        value.isFinite ? value : fallback
     }
 }
 
