@@ -442,6 +442,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func close() {
+        thumbnailTask?.cancel()
+        thumbnailTask = nil
         stop()
         visible = false
         expanded = false
