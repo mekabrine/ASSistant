@@ -90,14 +90,26 @@ struct ChatView: View {
                                         .id(app.id)
                                 }
                                 if isLoading {
-                                    HStack(alignment: .top) {
-                                        TypingPulse()
-                                        Text(streaming.isEmpty ? (agentStatus.isEmpty ? "Thinking…" : agentStatus) : streaming)
+                                    HStack(alignment: .top, spacing: 10) {
+                                        AssistantCharacterView(
+                                            state: AssistantCharacterState.resolve(
+                                                status: agentStatus,
+                                                browser: browser,
+                                                loading: isLoading,
+                                                callMode: showCallMode
+                                            ),
+                                            detail: agentStatus.isEmpty ? "Working on your request…" : agentStatus
+                                        )
+                                        .frame(width: 118, alignment: .leading)
+
+                                        Text(streaming.isEmpty
+                                             ? (agentStatus.isEmpty ? "Thinking…" : agentStatus)
+                                             : streaming)
                                             .textSelection(.enabled)
                                             .padding(12)
                                             .frame(maxWidth: .infinity, alignment: .leading)
-                                            .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
-                                        Spacer(minLength: 30)
+                                            .background(Color.secondary.opacity(0.12),
+                                                        in: RoundedRectangle(cornerRadius: 14))
                                     }
                                     .id("stream")
                                 }
