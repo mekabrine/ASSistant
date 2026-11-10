@@ -131,11 +131,15 @@ struct ChatView: View {
                             Task { @MainActor in
                                 await Task.yield()
                                 proxy.scrollTo("chat-bottom", anchor: .bottom)
+                                try? await Task.sleep(nanoseconds: 65_000_000)
+                                proxy.scrollTo("chat-bottom", anchor: .bottom)
                             }
                         }
                         .onChange(of: chatID) { _ in
                             Task { @MainActor in
                                 await Task.yield()
+                                proxy.scrollTo("chat-bottom", anchor: .bottom)
+                                try? await Task.sleep(nanoseconds: 65_000_000)
                                 proxy.scrollTo("chat-bottom", anchor: .bottom)
                             }
                         }
@@ -393,6 +397,7 @@ struct ChatView: View {
                 browser.activateChat(value)
                 attachmentsExpanded = false
                 composer = value.map(ChatDraftStore.get) ?? ""
+                composerHeight = GrowingMessageInput.minimumHeight
                 errorText = ""
             }
             .onChange(of: composer) { value in
@@ -543,8 +548,9 @@ struct ChatView: View {
 
     private var welcomeCard: some View {
         VStack(spacing: 15) {
-            AssistantOrb(size: 74)
-                .frame(height: 120)
+            AssistantCharacterView(state: .idle, detail: "Ready when you are")
+                .scaleEffect(1.28)
+                .frame(height: 92)
             Text("Your assistant, your models")
                 .font(.title2).fontWeight(.bold)
                 .multilineTextAlignment(.center)
