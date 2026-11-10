@@ -365,6 +365,7 @@ struct BrowserDock: View {
     @ObservedObject var workspace: BrowserWorkspace
     @State private var dragOffset: CGSize = .zero
     @State private var dragging = false
+    @State private var suppressTap = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -403,16 +404,30 @@ struct BrowserDock: View {
                                 let finalY = clamp(baseY + dy, minY, maxY)
                                 dragOffset = .zero
                                 dragging = false
+                                suppressTap = true
                                 guard width.isFinite, height.isFinite, width > 1, height > 1,
-                                      finalX.isFinite, finalY.isFinite else { return }
+                                      finalX.isFinite, finalY.isFinite else {
+                                    Task { @MainActor in
+                                        try? await Task.sleep(nanoseconds: 220_000_000)
+                                        suppressTap = false
+                                    }
+                                    return
+                                }
                                 workspace.moveDock(
                                     x: Double(finalX / width),
                                     y: Double(finalY / height)
                                 )
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 220_000_000)
+                                    suppressTap = false
+                                }
                             }
                     )
                     .position(x: centerX, y: centerY)
+                    .onTapGesture {
+                        if !suppressTap { workspace.open() }
+                    }
                     .animation(.spring(response: 0.22, dampingFraction: 0.86),
                                value: dragging)
                     .accessibilityHint("Drag to move; tap to open. Position is saved for this chat.")
@@ -495,7 +510,6 @@ private struct BrowserDockContent: View {
         .overlay(RoundedRectangle(cornerRadius: 17).stroke(.cyan.opacity(0.25)))
         .shadow(radius: 12, y: 5)
         .contentShape(RoundedRectangle(cornerRadius: 17))
-        .onTapGesture { workspace.open() }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Expand live browser: \(session.title)")
     }
